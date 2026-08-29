@@ -1,6 +1,6 @@
-import { Body, Controller, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req } from '@nestjs/common';
 import { QuestionsService } from './questions.service';
-import { CreateQuestionDto } from './dto/questions.dto';
+import { CreateQuestionDto, ListQuestionsDto } from './dto/questions.dto';
 
 @Controller('questions')
 export class QuestionsController {
@@ -8,6 +8,11 @@ export class QuestionsController {
 
   @Post()
   create(@Req() req: any, @Body() createQuestionDto: CreateQuestionDto) {
-    return this.questionsService.create(req,createQuestionDto);
+    return this.questionsService.create(req, createQuestionDto);
+  }
+
+  @Get()
+  listQuestions(@Req() req: any, @Body() body: ListQuestionsDto) {
+    return this.questionsService.listQuestions(req, body);
   }
 }

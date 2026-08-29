@@ -43,3 +43,5 @@ export class CreateQuestionOptionDto {
   @IsBoolean()
   isCorrect!: boolean;
 }
+
+export class ListQuestionsDto {}

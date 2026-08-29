@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { CreateQuestionDto } from './dto/questions.dto';
+import { CreateQuestionDto, ListQuestionsDto } from './dto/questions.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { QuestionType } from '@prisma/client';
+import { QuestionType, Role } from '@prisma/client';
 
 @Injectable()
 export class QuestionsService {
@@ -13,7 +13,7 @@ export class QuestionsService {
       where: { email: req.headers['x-user-email'] },
     });
 
-    if (!user || user.role !== 'TEACHER') {
+    if (!user || user.role !== Role.TEACHER) {
       throw new UnauthorizedException('Acesso não autorizado');
     }
 
@@ -49,6 +49,27 @@ export class QuestionsService {
       });
     }
 
-    return questionCreated ? questionCreated.id : "Ocorreu um erro ao realizar a criação da questão";
+    return questionCreated
+      ? questionCreated.id
+      : 'Ocorreu um erro ao realizar a criação da questão';
+  }
+
+  async listQuestions(req: any, body: ListQuestionsDto) {
+    // TO-DO: Ajustar para trazer o usuário logado
+    const user = await this.prisma.user.findUnique({
+      where: { email: req.headers['x-user-email'] },
+    });
+
+    if (!user || user.role !== Role.TEACHER) {
+      throw new UnauthorizedException(
+        'Essa busca pode ser realizada apenas por professores.',
+      );
+    }
+
+    const questions = await this.prisma.question.findMany({
+      where: { userId: user.id },
+    });
+
+    return questions;
   }
 }
