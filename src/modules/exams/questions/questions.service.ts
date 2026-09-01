@@ -46,7 +46,15 @@ export class QuestionsService {
           correctOption: createQuestion.correctOption,
           userId: user.id,
           ...(options
-            ? { questionOptions: { create: createQuestion.options } }
+            ? {
+                questionOptions: {
+                  create: options.map((option) => ({
+                    label: option.label,
+                    text: option.text,
+                    isCorrect: option.isCorrect
+                  })),
+                },
+              }
             : {}),
         },
         include: { questionOptions: true },
@@ -75,7 +83,7 @@ export class QuestionsService {
     }
 
     const question = await this.prisma.question.findFirst({
-      where: { id, userId: user.id },
+      where: { id, userId: user.id }
     });
 
     if (!question) {
@@ -126,14 +134,30 @@ export class QuestionsService {
       throw new NotFoundException('Questão não encontrada');
     }
 
+    const isMultiple = updateQuestionDto.type === QuestionType.MULTIPLE_CHOICE;
+    const options = updateQuestionDto.options ?? [];
+
+    await this.prisma.questionOption.deleteMany({ where: { questionId: id } });
+
     return this.prisma.question.update({
       where: { id },
       data: {
         statement: updateQuestionDto.statement,
         type: updateQuestionDto.type,
         theme: updateQuestionDto.theme,
-        correctOption: updateQuestionDto.correctOption,
-      },
+        correctOption: isMultiple ? updateQuestionDto.correctOption : null,
+        ...(isMultiple && options.length
+          ? {
+              questionOptions: {
+                create: options.map((option, index) => ({
+                  label: option.label,
+                  text: option.text,
+                  isCorrect: option.isCorrect,
+                })),
+              },
+            }
+          : {}),
+      }
     });
   }
 
