@@ -9,7 +9,7 @@ import {
   Req,
 } from '@nestjs/common';
 import { QuestionsService } from './questions.service';
-import { CreateQuestionDto, ListQuestionsDto } from './dto/questions.dto';
+import { CreateQuestionDto} from './dto/questions.dto';
 
 @Controller('questions')
 export class QuestionsController {
@@ -21,8 +21,8 @@ export class QuestionsController {
   }
 
   @Get()
-  listQuestions(@Req() req: any, @Body() body: ListQuestionsDto) {
-    return this.questionsService.listQuestions(req, body);
+  listQuestions(@Req() req: any) {
+    return this.questionsService.listQuestions(req);
   }
 
   @Get(':id')

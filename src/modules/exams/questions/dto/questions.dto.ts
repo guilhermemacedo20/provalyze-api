@@ -18,7 +18,7 @@ export class CreateQuestionDto {
   type!: QuestionType;
 
   @IsString()
-  theme!: string;
+  themeId!: string;
 
   @IsOptional()
   @IsString()

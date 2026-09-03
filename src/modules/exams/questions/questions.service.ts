@@ -4,7 +4,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { CreateQuestionDto, ListQuestionsDto } from './dto/questions.dto';
+import { CreateQuestionDto } from './dto/questions.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { QuestionType, Role } from '@prisma/client';
 
@@ -22,6 +22,14 @@ export class QuestionsService {
       throw new UnauthorizedException('Acesso não autorizado');
     }
 
+    const theme = await this.prisma.theme.findFirst({
+      where: { id: createQuestion.themeId, userId: user.id },
+    });
+
+    if (!theme) {
+      throw new NotFoundException('Tema não encontrado para o usuário logado');
+    }
+
     let questionCreated;
     const options = createQuestion.options?.length
       ? createQuestion.options
@@ -31,7 +39,7 @@ export class QuestionsService {
         data: {
           statement: createQuestion.statement,
           type: 'OPEN_ENDED',
-          theme: createQuestion.theme,
+          themeId: createQuestion.themeId,
           userId: user.id,
         },
       });
@@ -42,7 +50,7 @@ export class QuestionsService {
         data: {
           statement: createQuestion.statement,
           type: 'MULTIPLE_CHOICE',
-          theme: createQuestion.theme,
+          themeId: createQuestion.themeId,
           correctOption: createQuestion.correctOption,
           userId: user.id,
           ...(options
@@ -51,7 +59,7 @@ export class QuestionsService {
                   create: options.map((option) => ({
                     label: option.label,
                     text: option.text,
-                    isCorrect: option.isCorrect
+                    isCorrect: option.isCorrect,
                   })),
                 },
               }
@@ -75,7 +83,7 @@ export class QuestionsService {
     const user = await this.prisma.user.findUnique({
       where: { email: req.headers['x-user-email'] },
     });
-    
+
     if (!user || user.role !== Role.TEACHER) {
       throw new UnauthorizedException(
         'Não foi possível buscar a questão mencionada.',
@@ -83,7 +91,7 @@ export class QuestionsService {
     }
 
     const question = await this.prisma.question.findFirst({
-      where: { id, userId: user.id }
+      where: { id, userId: user.id },
     });
 
     if (!question) {
@@ -93,7 +101,7 @@ export class QuestionsService {
     return question;
   }
 
-  async listQuestions(req: any, body: ListQuestionsDto) {
+  async listQuestions(req: any) {
     // TO-DO: Ajustar para trazer o usuário logado
     const user = await this.prisma.user.findUnique({
       where: { email: req.headers['x-user-email'] },
@@ -126,6 +134,14 @@ export class QuestionsService {
         'Não foi possível atualizar a questão mencionada.',
       );
     }
+    const theme = await this.prisma.theme.findFirst({
+      where: { id: updateQuestionDto.themeId, userId: user.id },
+    });
+
+    if (!theme) {
+      throw new NotFoundException('Tema não encontrado para o usuário logado');
+    }
+    
     const existing = await this.prisma.question.findFirst({
       where: { id, userId: user.id },
     });
@@ -144,7 +160,7 @@ export class QuestionsService {
       data: {
         statement: updateQuestionDto.statement,
         type: updateQuestionDto.type,
-        theme: updateQuestionDto.theme,
+        themeId: updateQuestionDto.themeId,
         correctOption: isMultiple ? updateQuestionDto.correctOption : null,
         ...(isMultiple && options.length
           ? {
@@ -157,7 +173,7 @@ export class QuestionsService {
               },
             }
           : {}),
-      }
+      },
     });
   }
 
