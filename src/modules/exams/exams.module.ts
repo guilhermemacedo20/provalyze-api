@@ -3,8 +3,8 @@ import { QuestionsController } from './questions/questions.controller';
 import { QuestionsService } from './questions/questions.service';
 import { ExamsController } from './exams/exams.controller';
 import { ExamsService } from './exams/exams.service';
-import { ThemeService } from './theme/theme.service';
-import { ThemeController } from './theme/theme.controller';
+import { ThemeService } from './theme/themes.service';
+import { ThemeController } from './theme/themes.controller';
 
 @Module({
   controllers: [ExamsController, QuestionsController, ThemeController],

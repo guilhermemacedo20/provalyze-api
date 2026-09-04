@@ -8,10 +8,10 @@ import {
   Post,
   Req,
 } from '@nestjs/common';
-import { ThemeService } from './theme.service';
+import { ThemeService } from './themes.service';
 import { CreateThemeDto } from './dto/themes.dto';
 
-@Controller('theme')
+@Controller('themes')
 export class ThemeController {
   constructor(private readonly themeService: ThemeService) {}
 
