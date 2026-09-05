@@ -4,7 +4,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { CreateQuestionDto } from './dto/questions.dto';
+import { CreateQuestionDto, ListQuestionsDto } from './dto/questions.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { QuestionType, Role } from '@prisma/client';
 
@@ -101,7 +101,7 @@ export class QuestionsService {
     return question;
   }
 
-  async listQuestions(req: any) {
+  async listQuestions(req: any, query: ListQuestionsDto) {
     // TO-DO: Ajustar para trazer o usuário logado
     const user = await this.prisma.user.findUnique({
       where: { email: req.headers['x-user-email'] },
@@ -114,7 +114,10 @@ export class QuestionsService {
     }
 
     const questions = await this.prisma.question.findMany({
-      where: { userId: user.id },
+      where: {
+        userId: user.id,
+        ...(query.themeId ? { themeId: query.themeId } : {}),
+      },
     });
 
     return questions;
@@ -141,7 +144,7 @@ export class QuestionsService {
     if (!theme) {
       throw new NotFoundException('Tema não encontrado para o usuário logado');
     }
-    
+
     const existing = await this.prisma.question.findFirst({
       where: { id, userId: user.id },
     });

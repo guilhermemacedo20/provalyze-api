@@ -44,4 +44,8 @@ export class CreateQuestionOptionDto {
   isCorrect!: boolean;
 }
 
-export class ListQuestionsDto {}
+export class ListQuestionsDto {
+  @IsOptional()
+  @IsString()
+  themeId?: string;
+}
