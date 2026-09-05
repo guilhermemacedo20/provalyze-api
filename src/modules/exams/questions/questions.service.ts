@@ -92,6 +92,11 @@ export class QuestionsService {
 
     const question = await this.prisma.question.findFirst({
       where: { id, userId: user.id },
+      include: {
+        questionOptions: {
+          orderBy: { label: 'asc' },
+        },
+      },
     });
 
     if (!question) {
@@ -168,7 +173,7 @@ export class QuestionsService {
         ...(isMultiple && options.length
           ? {
               questionOptions: {
-                create: options.map((option, index) => ({
+                create: options.map((option) => ({
                   label: option.label,
                   text: option.text,
                   isCorrect: option.isCorrect,
@@ -176,6 +181,11 @@ export class QuestionsService {
               },
             }
           : {}),
+      },
+      include: {
+        questionOptions: {
+          orderBy: { label: 'asc' },
+        },
       },
     });
   }
