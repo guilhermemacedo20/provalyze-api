@@ -19,4 +19,52 @@ model User {
   email     String   @unique
   role      Role
   createdAt DateTime @default(now())
+
+  themes    Theme[]
+  questions Question[]
+}
+
+// Questions
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  OPEN_ENDED
+}
+
+model Theme {
+  id        String   @id @default(cuid())
+  name      String
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teacher   User       @relation(fields: [userId], references: [id])
+  questions Question[]
+
+  @@unique([userId, name])
+}
+
+model Question {
+  id            String        @id @default(cuid())
+  statement     String
+  type          QuestionType?
+  themeId       String
+  correctOption String?
+  userId        String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  teacher         User             @relation(fields: [userId], references: [id])
+  theme           Theme            @relation(fields: [themeId], references: [id], onDelete: Cascade)
+  questionOptions QuestionOption[]
+}
+
+model QuestionOption {
+  id         String  @id @default(cuid())
+  questionId String
+  label      String
+  text       String
+  isCorrect  Boolean @default(false)
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
 }
