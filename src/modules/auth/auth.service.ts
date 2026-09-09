@@ -7,11 +7,15 @@ import {
   LoginDto,
   ResetPasswordDto,
 } from './dto/auth.dto';
-import { generateCode } from 'src/utils/generateCode';
+import { generateCode } from 'src/common/utils/generateCode';
+import { JwtService } from '@nestjs/jwt';
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jwt: JwtService,
+  ) {}
 
   async loginUser(data: LoginDto) {
     const email = data.email;
@@ -25,7 +29,14 @@ export class AuthService {
       throw new UnauthorizedException('Credenciais inválidas');
     }
 
+    const accessToken = this.jwt.sign({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+    });
+
     return {
+      accessToken,
       user: {
         id: user.id,
         name: user.name,
@@ -142,5 +153,25 @@ export class AuthService {
     }
 
     return { message: 'Senha redefinida com sucesso.' };
+  }
+
+  async me(loggedUser: { email: string; id: string }) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: loggedUser.id },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        registrationNumber: true,
+        password: false,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Usuário não encontrado');
+    }
+
+    return user;
   }
 }
