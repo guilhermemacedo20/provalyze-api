@@ -22,6 +22,9 @@ model User {
 
   themes    Theme[]
   questions Question[]
+
+  teacherAssignments TeacherAssignment[]
+  studentAssignments StudentAssignment[]
 }
 
 // Questions
@@ -67,4 +70,62 @@ model QuestionOption {
   isCorrect  Boolean @default(false)
 
   question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+}
+
+// Academic
+
+model Course {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  subjects Subject[]
+}
+
+model Subject {
+  id        String   @id @default(cuid())
+  name      String
+  courseId  String
+  createdAt DateTime @default(now())
+
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  classes Class[]
+
+  @@unique([courseId, name])
+}
+
+model Class {
+  id        String   @id @default(cuid())
+  name      String
+  subjectId String
+  joinCode  String   @unique
+  createdAt DateTime @default(now())
+
+  subject            Subject             @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacherAssignments TeacherAssignment[]
+  studentAssignments StudentAssignment[]
+
+  @@unique([subjectId, name])
+}
+
+model TeacherAssignment {
+  id        String    @id @default(cuid())
+  classId   String
+  userId    String
+  createdAt DateTime  @default(now())
+  endedAt   DateTime?
+
+  class   Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  teacher User  @relation(fields: [userId], references: [id])
+}
+
+model StudentAssignment {
+  id        String    @id @default(cuid())
+  classId   String
+  userId    String
+  createdAt DateTime  @default(now())
+  endedAt   DateTime?
+
+  class   Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student User  @relation(fields: [userId], references: [id])
 }
