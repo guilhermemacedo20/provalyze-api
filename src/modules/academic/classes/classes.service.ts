@@ -93,12 +93,100 @@ export class ClassesService {
     return classes.map((schoolClass) => ({
       id: schoolClass.id,
       name: schoolClass.name,
+      joinCode: schoolClass.joinCode,
       teacherName: schoolClass.teacherAssignments[0]?.teacher.name ?? '—',
       subjectName: schoolClass.subject.name,
       courseName: schoolClass.subject.course.name,
       studentsCount: schoolClass.studentAssignments.length,
       averageScore: null, // ainda não existe módulo de provas/notas no sistema
     }));
+  }
+
+  async getClass(req: any, id: string) {
+    await this.requireAdmin(req);
+
+    const schoolClass = await this.prisma.class.findUnique({
+      where: { id },
+      include: {
+        subject: { include: { course: { select: { name: true } } } },
+        teacherAssignments: {
+          where: { endedAt: null },
+          include: { teacher: { select: { name: true } } },
+        },
+        studentAssignments: {
+          where: { endedAt: null },
+          include: {
+            student: { select: { id: true, name: true, email: true } },
+          },
+        },
+      },
+    });
+
+    if (!schoolClass) {
+      throw new NotFoundException('Turma não encontrada');
+    }
+
+    return {
+      id: schoolClass.id,
+      name: schoolClass.name,
+      joinCode: schoolClass.joinCode,
+      teacherName: schoolClass.teacherAssignments[0]?.teacher.name ?? '—',
+      subjectName: schoolClass.subject.name,
+      courseName: schoolClass.subject.course.name,
+      students: schoolClass.studentAssignments.map((a) => ({
+        id: a.student.id,
+        name: a.student.name,
+        email: a.student.email,
+      })),
+    };
+  }
+
+  async addStudent(req: any, classId: string, studentId: string) {
+    await this.requireAdmin(req);
+
+    const schoolClass = await this.prisma.class.findUnique({
+      where: { id: classId },
+    });
+    if (!schoolClass) {
+      throw new NotFoundException('Turma não encontrada');
+    }
+
+    const student = await this.prisma.user.findUnique({
+      where: { id: studentId },
+    });
+    if (!student || student.role !== Role.STUDENT) {
+      throw new BadRequestException(
+        'O usuário selecionado não é um aluno válido',
+      );
+    }
+
+    const existing = await this.prisma.studentAssignment.findFirst({
+      where: { classId, userId: studentId, endedAt: null },
+    });
+    if (existing) {
+      throw new BadRequestException('Esse aluno já está matriculado nessa turma');
+    }
+
+    return this.prisma.studentAssignment.create({
+      data: { classId, userId: studentId },
+    });
+  }
+
+  async removeStudent(req: any, classId: string, studentId: string) {
+    await this.requireAdmin(req);
+
+    const assignment = await this.prisma.studentAssignment.findFirst({
+      where: { classId, userId: studentId, endedAt: null },
+    });
+
+    if (!assignment) {
+      throw new NotFoundException('Aluno não encontrado nessa turma');
+    }
+
+    return this.prisma.studentAssignment.update({
+      where: { id: assignment.id },
+      data: { endedAt: new Date() },
+    });
   }
 
   async deleteClass(req: any, id: string) {

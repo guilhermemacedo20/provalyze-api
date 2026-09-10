@@ -10,3 +10,8 @@ export class CreateClassDto {
   @IsString()
   teacherId!: string;
 }
+
+export class AddStudentDto {
+  @IsString()
+  studentId!: string;
+}
