@@ -27,6 +27,7 @@ export class UsersService {
     await this.requireAdmin(req);
 
     const users = await this.prisma.user.findMany({
+      where: { anonymizedAt: null },
       orderBy: { createdAt: 'desc' },
       include: {
         teacherAssignments: {
@@ -94,6 +95,13 @@ export class UsersService {
       throw new NotFoundException('Usuário não encontrado');
     }
 
-    return this.prisma.user.delete({ where: { id } });
+    return this.prisma.user.update({
+      where: { id },
+      data: {
+        name: 'Usuário removido',
+        email: `removido-${id}@anon.provalyze.local`,
+        anonymizedAt: new Date(),
+      },
+    });
   }
 }
