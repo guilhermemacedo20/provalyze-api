@@ -1,54 +1,24 @@
-import {
-  Injectable,
-  NotFoundException,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateCourseDto, UpdateCourseDto } from './dto/courses.dto';
-import { Role } from '@prisma/client';
 
 @Injectable()
 export class CoursesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async createCourse(req: any, createCourseDto: CreateCourseDto) {
-    // TO-DO: Ajustar para trazer o usuário logado
-    const user = await this.prisma.user.findUnique({
-      where: { email: req.headers['x-user-email'] },
-    });
-
-    if (!user || user.role !== Role.ADMIN) {
-      throw new UnauthorizedException('Usuário não autorizado');
-    }
-
+  async createCourse(createCourseDto: CreateCourseDto) {
     return this.prisma.course.create({
       data: { name: createCourseDto.name },
     });
   }
 
-  async listCourses(req: any) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: req.headers['x-user-email'] },
-    });
-
-    if (!user) {
-      throw new UnauthorizedException('Usuário não autorizado');
-    }
-
+  async listCourses() {
     return this.prisma.course.findMany({
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  async getCourse(req: any, id: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: req.headers['x-user-email'] },
-    });
-
-    if (!user) {
-      throw new UnauthorizedException('Usuário não autorizado');
-    }
-
+  async getCourse(id: string) {
     const course = await this.prisma.course.findUnique({ where: { id } });
 
     if (!course) {
@@ -58,15 +28,7 @@ export class CoursesService {
     return course;
   }
 
-  async updateCourse(req: any, id: string, updateCourseDto: UpdateCourseDto) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: req.headers['x-user-email'] },
-    });
-
-    if (!user || user.role !== Role.ADMIN) {
-      throw new UnauthorizedException('Usuário não autorizado');
-    }
-
+  async updateCourse(id: string, updateCourseDto: UpdateCourseDto) {
     const existing = await this.prisma.course.findUnique({ where: { id } });
 
     if (!existing) {
@@ -79,15 +41,7 @@ export class CoursesService {
     });
   }
 
-  async deleteCourse(req: any, id: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: req.headers['x-user-email'] },
-    });
-
-    if (!user || user.role !== Role.ADMIN) {
-      throw new UnauthorizedException('Usuário não autorizado');
-    }
-
+  async deleteCourse(id: string) {
     const existing = await this.prisma.course.findUnique({ where: { id } });
 
     if (!existing) {
