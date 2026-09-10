@@ -14,9 +14,119 @@ enum Role {
 }
 
 model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  role         Role
+  createdAt    DateTime  @default(now())
+  anonymizedAt DateTime?
+
+  themes    Theme[]
+  questions Question[]
+
+  teacherAssignments TeacherAssignment[]
+  studentAssignments StudentAssignment[]
+}
+
+// Questions
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  OPEN_ENDED
+}
+
+model Theme {
   id        String   @id @default(cuid())
   name      String
-  email     String   @unique
-  role      Role
+  userId    String
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teacher   User       @relation(fields: [userId], references: [id])
+  questions Question[]
+
+  @@unique([userId, name])
+}
+
+model Question {
+  id            String        @id @default(cuid())
+  statement     String
+  type          QuestionType?
+  themeId       String
+  correctOption String?
+  userId        String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  teacher         User             @relation(fields: [userId], references: [id])
+  theme           Theme            @relation(fields: [themeId], references: [id], onDelete: Cascade)
+  questionOptions QuestionOption[]
+}
+
+model QuestionOption {
+  id         String  @id @default(cuid())
+  questionId String
+  label      String
+  text       String
+  isCorrect  Boolean @default(false)
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+}
+
+// Academic
+
+model Course {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  subjects Subject[]
+}
+
+model Subject {
+  id        String   @id @default(cuid())
+  name      String
+  courseId  String
+  createdAt DateTime @default(now())
+
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  classes Class[]
+
+  @@unique([courseId, name])
+}
+
+model Class {
+  id        String   @id @default(cuid())
+  name      String
+  subjectId String
+  joinCode  String   @unique
+  createdAt DateTime @default(now())
+
+  subject            Subject             @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacherAssignments TeacherAssignment[]
+  studentAssignments StudentAssignment[]
+
+  @@unique([subjectId, name])
+}
+
+model TeacherAssignment {
+  id        String    @id @default(cuid())
+  classId   String
+  userId    String
+  createdAt DateTime  @default(now())
+  endedAt   DateTime?
+
+  class   Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  teacher User  @relation(fields: [userId], references: [id])
+}
+
+model StudentAssignment {
+  id        String    @id @default(cuid())
+  classId   String
+  userId    String
+  createdAt DateTime  @default(now())
+  endedAt   DateTime?
+
+  class   Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student User  @relation(fields: [userId], references: [id])
 }
