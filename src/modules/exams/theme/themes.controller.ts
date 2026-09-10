@@ -7,11 +7,17 @@ import {
   Patch,
   Post,
   Req,
+  UseGuards,
 } from '@nestjs/common';
 import { ThemeService } from './themes.service';
 import { CreateThemeDto } from './dto/themes.dto';
+import { RolesGuard } from 'src/common/guards/role.guard';
+import { JwtAuthGuard } from 'src/common/guards/jwt.guard';
+import { Roles } from 'src/common/decorators/roles.decorator';
 
 @Controller('themes')
+@UseGuards(JwtAuthGuard,RolesGuard)
+@Roles('TEACHER')
 export class ThemeController {
   constructor(private readonly themeService: ThemeService) {}
 

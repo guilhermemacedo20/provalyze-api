@@ -1,25 +1,16 @@
 import {
   Injectable,
   NotFoundException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateThemeDto } from './dto/themes.dto';
-import { Role } from '@prisma/client';
 
 @Injectable()
 export class ThemeService {
   constructor(private readonly prisma: PrismaService) {}
 
   async createTheme(req: any, createThemeDto: CreateThemeDto) {
-    // TO-DO: Ajustar para trazer o usuário logado
-    const user = await this.prisma.user.findUnique({
-      where: { email: req.headers['x-user-email'] },
-    });
-
-    if (!user || user.role !== 'TEACHER') {
-      throw new UnauthorizedException('Usuário não autorizado');
-    }
+    const user = req.user;
 
     return this.prisma.theme.create({
       data: {
@@ -30,14 +21,7 @@ export class ThemeService {
   }
 
   async listThemes(req: any) {
-    // TO-DO: Ajustar para trazer o usuário logado
-    const user = await this.prisma.user.findUnique({
-      where: { email: req.headers['x-user-email'] },
-    });
-
-    if (!user || user.role !== 'TEACHER') {
-      throw new UnauthorizedException('Usuário não autorizado');
-    }
+    const user = req.user;
 
     return this.prisma.theme.findMany({
       where: {
@@ -47,16 +31,7 @@ export class ThemeService {
   }
 
   async listTheme(req: any, id: string) {
-    // TO-DO: Ajustar para trazer o usuário logado
-    const user = await this.prisma.user.findUnique({
-      where: { email: req.headers['x-user-email'] },
-    });
-
-    if (!user || user.role !== Role.TEACHER) {
-      throw new UnauthorizedException(
-        'Não foi possível buscar o tema mencionado.',
-      );
-    }
+    const user = req.user;
 
     const theme = await this.prisma.theme.findFirst({
       where: { id, userId: user.id },
@@ -70,15 +45,8 @@ export class ThemeService {
   }
 
   async updateTheme(req: any, id: string, updateThemeDto: CreateThemeDto) {
-    // TO-DO: Ajustar para trazer o usuário logado
-    const user = await this.prisma.user.findUnique({
-      where: { email: req.headers['x-user-email'] },
-    });
-    if (!user || user.role !== Role.TEACHER) {
-      throw new UnauthorizedException(
-        'Não foi possível atualizar o tema mencionado.',
-      );
-    }
+    const user = req.user;
+
     const existing = await this.prisma.theme.findFirst({
       where: { id, userId: user.id },
     });
@@ -96,16 +64,7 @@ export class ThemeService {
   }
 
   async deleteTheme(req: any, id: string) {
-    // TO-DO: Ajustar para trazer o usuário logado
-    const user = await this.prisma.user.findUnique({
-      where: { email: req.headers['x-user-email'] },
-    });
-
-    if (!user || user.role !== Role.TEACHER) {
-      throw new UnauthorizedException(
-        'Essa busca pode ser realizada apenas por professores.',
-      );
-    }
+    const user = req.user;
 
     const existing = await this.prisma.theme.findFirst({
       where: { id, userId: user.id },
