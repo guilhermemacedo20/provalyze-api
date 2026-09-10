@@ -22,7 +22,7 @@
     "prisma:reset": "npx prisma migrate reset",
     "prisma:migrate:dev": "npx prisma migrate dev",
     "prisma:generate": "npx prisma generate",
-    "prisma:migrate:deploy": "npx prisma migrate deploy",
+    "prisma:migrate:deploy": "px prisma migrate deploy",
     "prisma:db:force": "npx prisma db push"
   },
   "dependencies": {
