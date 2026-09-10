@@ -24,9 +24,6 @@ export class ClassesService {
     return user;
   }
 
-  // Gera um código curto (ex: "kf82h1qz"), tentando algumas vezes
-  // caso, por azar, gere um código que já existe (é raríssimo, mas
-  // o banco garante unicidade, então tratamos essa possibilidade).
   private async generateJoinCode(): Promise<string> {
     for (let attempt = 0; attempt < 5; attempt++) {
       const code = Math.random().toString(36).slice(2, 10);
