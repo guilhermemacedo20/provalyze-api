@@ -26,6 +26,7 @@ export class UsersController {
   }
 
   @Get()
+  @Roles('ADMIN', 'COORDINATOR')
   listUsers() {
     return this.usersService.listUsers();
   }
