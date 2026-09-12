@@ -15,7 +15,7 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 
 @Controller('courses/:courseId/subjects')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN')
+@Roles('ADMIN','COORDINATOR')
 export class SubjectsController {
   constructor(private readonly subjectsService: SubjectsService) {}
 

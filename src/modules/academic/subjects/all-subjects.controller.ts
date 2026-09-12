@@ -6,7 +6,7 @@ import { RolesGuard } from 'src/common/guards/role.guard';
 
 @Controller('subjects')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN')
+@Roles('ADMIN','COORDINATOR')
 export class AllSubjectsController {
   constructor(private readonly subjectsService: SubjectsService) {}
 

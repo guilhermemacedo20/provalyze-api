@@ -11,6 +11,7 @@ enum Role {
   ADMIN
   TEACHER
   STUDENT
+  COORDINATOR
 }
 
 model User {
@@ -19,7 +20,7 @@ model User {
   email     String   @unique
   role      Role
   registrationNumber String?   @unique
-  password       String
+  password       String?
   createdAt DateTime @default(now())
   updatedAt          DateTime  @updatedAt
 

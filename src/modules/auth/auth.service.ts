@@ -22,6 +22,12 @@ export class AuthService {
 
     const user = await this.prisma.user.findUnique({ where: { email } });
 
+    if (!user?.password) {
+      throw new UnauthorizedException(
+        'É necessário solicitar o reset de senha.',
+      );
+    }
+
     const invalid =
       !user || !(await bcrypt.compare(data.password, user.password));
 
@@ -132,7 +138,7 @@ export class AuthService {
 
     const errorMessage = 'Não foi possível alterar a senha';
 
-    if (!user) {
+    if (!user || !user.password) {
       throw new UnauthorizedException(errorMessage);
     }
 
