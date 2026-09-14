@@ -19,20 +19,24 @@ export class AuthService {
 
   async loginUser(data: LoginDto) {
     const email = data.email;
+    const message = 'Usuário ou senha inválidos';
 
     const user = await this.prisma.user.findUnique({ where: { email } });
 
-    if (!user?.password) {
+    if (!user) {
+      throw new UnauthorizedException(message);
+    }
+
+    if (!user.password) {
       throw new UnauthorizedException(
         'É necessário solicitar o reset de senha.',
       );
     }
 
-    const invalid =
-      !user || !(await bcrypt.compare(data.password, user.password));
+    const invalid = !(await bcrypt.compare(data.password, user.password));
 
     if (invalid) {
-      throw new UnauthorizedException('Credenciais inválidas');
+      throw new UnauthorizedException(message);
     }
 
     const accessToken = this.jwt.sign({
@@ -62,7 +66,7 @@ export class AuthService {
 
     const message =
       'Se o e-mail existir, enviaremos um código para redefinir a senha.';
-
+      
     if (!user) {
       return { message };
     }
