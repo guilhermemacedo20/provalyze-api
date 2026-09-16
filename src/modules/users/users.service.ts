@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateUserDto, UpdateUserDto } from './dto/users.dto';
 import { Prisma, Role } from '@prisma/client';
@@ -43,15 +47,18 @@ export class UsersService {
   }
 
   async createUser(createUserDto: CreateUserDto) {
-    const email = createUserDto.email.trim().toLowerCase();
-
     try {
       return await this.prisma.user.create({
-        data: { ...createUserDto, email },
+        data: createUserDto,
       });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        throw new BadRequestException('Já existe um usuário cadastrado com esse e-mail.');
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new BadRequestException(
+          'Já existe um usuário cadastrado com esse e-mail.',
+        );
       }
       throw error;
     }
@@ -71,16 +78,19 @@ export class UsersService {
       throw new NotFoundException('Usuário não encontrado');
     }
 
-    const email = updateUserDto.email.trim().toLowerCase();
-
     try {
       return await this.prisma.user.update({
         where: { id },
-        data: { ...updateUserDto, email },
+        data: updateUserDto,
       });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        throw new BadRequestException('Já existe um usuário cadastrado com esse e-mail.');
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new BadRequestException(
+          'Já existe um usuário cadastrado com esse e-mail.',
+        );
       }
       throw error;
     }
