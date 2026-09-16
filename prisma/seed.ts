@@ -20,6 +20,7 @@ const FIRST_NAMES = [
   'Larissa',
   'Felipe',
   'Amanda',
+  'Guilherme',
   'Thiago',
   'Patrícia',
   'Diego',
