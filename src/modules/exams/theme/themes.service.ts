@@ -1,23 +1,27 @@
-import {
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateThemeDto } from './dto/themes.dto';
+import { LogsService } from 'src/common/logs/logs.service';
 
 @Injectable()
 export class ThemeService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly logs: LogsService,
+  ) {}
 
   async createTheme(req: any, createThemeDto: CreateThemeDto) {
     const user = req.user;
-
-    return this.prisma.theme.create({
+    const themeCreated = await this.prisma.theme.create({
       data: {
         name: createThemeDto.name,
         userId: user.id,
       },
     });
+
+    await this.logs.audit(`Theme Created ${themeCreated.id}`, user.id);
+
+    return themeCreated;
   }
 
   async listThemes(req: any) {
@@ -54,7 +58,7 @@ export class ThemeService {
     if (!existing) {
       throw new NotFoundException('Tema não encontrado');
     }
-
+    await this.logs.audit(`Theme Updated ${existing.id}`, user.id);
     return this.prisma.theme.update({
       where: { id },
       data: {
@@ -73,6 +77,8 @@ export class ThemeService {
     if (!existing) {
       throw new NotFoundException('Tema não encontrado');
     }
+
+    await this.logs.audit(`Theme Deleted ${existing.id}`, user.id);
 
     return this.prisma.theme.delete({ where: { id } });
   }

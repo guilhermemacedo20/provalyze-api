@@ -9,12 +9,14 @@ import {
 } from './dto/auth.dto';
 import { generateCode } from 'src/common/utils/generateCode';
 import { JwtService } from '@nestjs/jwt';
+import { LogsService } from 'src/common/logs/logs.service';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly logs: LogsService,
   ) {}
 
   async loginUser(data: LoginDto) {
@@ -22,7 +24,6 @@ export class AuthService {
     const message = 'Usuário ou senha inválidos';
 
     const user = await this.prisma.user.findUnique({ where: { email } });
-
     if (!user) {
       throw new UnauthorizedException(message);
     }
@@ -32,7 +33,6 @@ export class AuthService {
         'É necessário solicitar o reset de senha.',
       );
     }
-
     const invalid = !(await bcrypt.compare(data.password, user.password));
 
     if (invalid) {
@@ -44,6 +44,8 @@ export class AuthService {
       email: user.email,
       role: user.role,
     });
+
+    await this.logs.audit('User login', user.id);
 
     return {
       accessToken,
@@ -66,10 +68,11 @@ export class AuthService {
 
     const message =
       'Se o e-mail existir, enviaremos um código para redefinir a senha.';
-      
     if (!user) {
       return { message };
     }
+
+    await this.logs.audit('Forgot password', user.id);
 
     // await this. TO-DO: Realizar lógica do envio de e-mail com o código de redefinição de senha
     console.info(
@@ -118,6 +121,8 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(data.newPassword, 10);
 
+    await this.logs.audit('Reset password', user.id);
+
     try {
       await this.prisma.user.update({
         where: { id: user.id },
@@ -152,6 +157,8 @@ export class AuthService {
     );
 
     const hashedPassword = await bcrypt.hash(data.newPassword, 10);
+
+    await this.logs.audit('Change password', user.id);
 
     if (samePassword) {
       await this.prisma.user.update({

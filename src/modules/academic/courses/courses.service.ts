@@ -1,15 +1,22 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateCourseDto, UpdateCourseDto } from './dto/courses.dto';
+import { LogsService } from 'src/common/logs/logs.service';
 
 @Injectable()
 export class CoursesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly logs: LogsService,
+  ) {}
 
-  async createCourse(createCourseDto: CreateCourseDto) {
-    return this.prisma.course.create({
+  async createCourse(req: any, createCourseDto: CreateCourseDto) {
+    const courseCreated = await this.prisma.course.create({
       data: { name: createCourseDto.name },
     });
+
+    await this.logs.audit(`Course created ${courseCreated.id} `, req.user.id);
+    return courseCreated;
   }
 
   async listCourses() {
@@ -28,25 +35,27 @@ export class CoursesService {
     return course;
   }
 
-  async updateCourse(id: string, updateCourseDto: UpdateCourseDto) {
+  async updateCourse(req: any, id: string, updateCourseDto: UpdateCourseDto) {
     const existing = await this.prisma.course.findUnique({ where: { id } });
 
     if (!existing) {
       throw new NotFoundException('Curso não encontrado');
     }
-
+    await this.logs.audit(`Course update ${id}`, req.user.id);
     return this.prisma.course.update({
       where: { id },
       data: { name: updateCourseDto.name },
     });
   }
 
-  async deleteCourse(id: string) {
+  async deleteCourse(req: any, id: string) {
     const existing = await this.prisma.course.findUnique({ where: { id } });
 
     if (!existing) {
       throw new NotFoundException('Curso não encontrado');
     }
+
+    await this.logs.audit(`Course deleted ${existing.id}`, req.user.id);
 
     return this.prisma.course.delete({ where: { id } });
   }
