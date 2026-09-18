@@ -1,8 +1,8 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from 'src/prisma/prisma.service';
@@ -51,14 +51,16 @@ export class UsersService {
   async registerUser(data: RegisterDto) {
     const email = data.email;
     const hasUser = await this.prisma.user.findUnique({ where: { email } });
-    const hashPassword = await bcrypt.hash(data.password, 10);
+
     if (hasUser) {
-      throw new UnauthorizedException('Usuário já possui conta cadastrada');
+      throw new ConflictException('Usuário já possui conta cadastrada');
     }
 
     if (data.role !== Role.STUDENT && data.role !== Role.TEACHER) {
-      throw new UnauthorizedException('Perfil de acesso não permitido');
+      throw new BadRequestException('Perfil de acesso não permitido');
     }
+
+    const hashPassword = await bcrypt.hash(data.password, 10);
 
     const userCreated = await this.prisma.user.create({
       data: { ...data, password: hashPassword },
