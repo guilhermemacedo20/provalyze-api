@@ -2,9 +2,11 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { CreateUserDto, UpdateUserDto } from './dto/users.dto';
+import { CreateUserDto, RegisterDto, UpdateUserDto } from './dto/users.dto';
 import { Prisma, Role } from '@prisma/client';
 
 @Injectable()
@@ -46,7 +48,32 @@ export class UsersService {
     });
   }
 
-  async createUser(createUserDto: CreateUserDto) {
+  async registerUser(data: RegisterDto) {
+    const email = data.email;
+    const hasUser = await this.prisma.user.findUnique({ where: { email } });
+    const hashPassword = await bcrypt.hash(data.password, 10);
+    if (hasUser) {
+      throw new UnauthorizedException('Usuário já possui conta cadastrada');
+    }
+
+    if (data.role !== Role.STUDENT && data.role !== Role.TEACHER) {
+      throw new UnauthorizedException('Perfil de acesso não permitido');
+    }
+
+    const userCreated = await this.prisma.user.create({
+      data: { ...data, password: hashPassword },
+    });
+
+    return {
+      user: {
+        name: userCreated.name,
+        email: userCreated.email,
+        id: userCreated.id,
+      },
+    };
+  }
+
+  async createUserFromAdmin(createUserDto: CreateUserDto) {
     try {
       return await this.prisma.user.create({
         data: createUserDto,

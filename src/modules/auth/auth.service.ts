@@ -66,7 +66,7 @@ export class AuthService {
 
     const message =
       'Se o e-mail existir, enviaremos um código para redefinir a senha.';
-      
+
     if (!user) {
       return { message };
     }

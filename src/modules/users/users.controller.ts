@@ -21,8 +21,8 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Post()
-  createUser(@Body() createUserDto: CreateUserDto) {
-    return this.usersService.createUser(createUserDto);
+  createUserFromAdmin(@Body() createUserDto: CreateUserDto) {
+    return this.usersService.createUserFromAdmin(createUserDto);
   }
 
   @Get()
