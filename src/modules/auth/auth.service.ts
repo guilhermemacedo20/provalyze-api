@@ -1,6 +1,5 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
-import { PrismaService } from '../../prisma/prisma.service';
 import {
   ChangePasswordDto,
   ForgotPasswordDto,
@@ -9,7 +8,9 @@ import {
 } from './dto/auth.dto';
 import { generateCode } from 'src/common/utils/generateCode';
 import { JwtService } from '@nestjs/jwt';
-import { LogsService } from 'src/common/logs/logs.service';
+import { LogsService } from 'src/infra/logs/logs.service';
+import { MailService } from 'src/infra/mail/mail.service';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
 
 @Injectable()
 export class AuthService {
@@ -17,6 +18,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly logs: LogsService,
+    private readonly mail: MailService,
   ) {}
 
   async loginUser(data: LoginDto) {
@@ -74,10 +76,8 @@ export class AuthService {
 
     await this.logs.audit('Forgot password', user.id);
 
-    // await this. TO-DO: Realizar lógica do envio de e-mail com o código de redefinição de senha
-    console.info(
-      `Código de redefinição de senha para o usuário ${user.id}: ${resetCode}`,
-    );
+    await this.mail.sendPasswordReset(body.email, resetCode, expiresAt);
+    
     await this.prisma.passwordResetToken.upsert({
       where: { userId: user.id },
       create: {

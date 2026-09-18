@@ -4,9 +4,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { CreateQuestionDto, ListQuestionsDto } from './dto/questions.dto';
-import { PrismaService } from 'src/prisma/prisma.service';
 import { QuestionType } from '@prisma/client';
-import { LogsService } from 'src/common/logs/logs.service';
+import { LogsService } from 'src/infra/logs/logs.service';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
 
 @Injectable()
 export class QuestionsService {
