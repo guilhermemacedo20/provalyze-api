@@ -28,8 +28,9 @@ export class AuthController {
   }
 
   @Post('change-password')
-  changePassword(@Body() body: ChangePasswordDto) {
-    return this.authService.changePassword(body);
+  @UseGuards(JwtAuthGuard)
+  changePassword(@Req() req: any, @Body() body: ChangePasswordDto) {
+    return this.authService.changePassword(req, body);
   }
 
   @Get('me')

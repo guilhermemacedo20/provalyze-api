@@ -4,12 +4,16 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { CreateQuestionDto, ListQuestionsDto } from './dto/questions.dto';
-import { PrismaService } from 'src/prisma/prisma.service';
 import { QuestionType } from '@prisma/client';
+import { LogsService } from 'src/infra/logs/logs.service';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
 
 @Injectable()
 export class QuestionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly logs: LogsService,
+  ) {}
 
   async createQuestion(req: any, createQuestion: CreateQuestionDto) {
     const user = req.user;
@@ -62,11 +66,12 @@ export class QuestionsService {
     }
 
     if (!questionCreated) {
+      await this.logs.audit('Question error creation', user.id);
       throw new InternalServerErrorException(
         'Ocorreu um erro ao realizar a criação da questão',
       );
     }
-
+    await this.logs.audit(`Question created ${questionCreated.id}`, user.id);
     return questionCreated;
   }
 
@@ -130,6 +135,8 @@ export class QuestionsService {
 
     await this.prisma.questionOption.deleteMany({ where: { questionId: id } });
 
+    await this.logs.audit(`Question updated ${existing.id}`, user.id);
+
     return this.prisma.question.update({
       where: { id },
       data: {
@@ -167,6 +174,8 @@ export class QuestionsService {
     if (!existing) {
       throw new NotFoundException('Questão não encontrada');
     }
+
+    await this.logs.audit(`Question deleted ${existing.id}`, user.id);
 
     return this.prisma.question.delete({ where: { id } });
   }

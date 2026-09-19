@@ -1,6 +1,5 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
-import { PrismaService } from '../../prisma/prisma.service';
 import {
   ChangePasswordDto,
   ForgotPasswordDto,
@@ -9,12 +8,17 @@ import {
 } from './dto/auth.dto';
 import { generateCode } from 'src/common/utils/generateCode';
 import { JwtService } from '@nestjs/jwt';
+import { LogsService } from 'src/infra/logs/logs.service';
+import { MailService } from 'src/infra/mail/mail.service';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly logs: LogsService,
+    private readonly mail: MailService,
   ) {}
 
   async loginUser(data: LoginDto) {
@@ -22,7 +26,6 @@ export class AuthService {
     const message = 'Usuário ou senha inválidos';
 
     const user = await this.prisma.user.findUnique({ where: { email } });
-
     if (!user) {
       throw new UnauthorizedException(message);
     }
@@ -30,6 +33,12 @@ export class AuthService {
     if (!user.password) {
       throw new UnauthorizedException(
         'É necessário solicitar o reset de senha.',
+      );
+    }
+
+    if (user.anonymizedAt) {
+      throw new UnauthorizedException(
+        'Entre em contato com o time de suporte, seu usuário se encontra excluido.',
       );
     }
 
@@ -44,6 +53,8 @@ export class AuthService {
       email: user.email,
       role: user.role,
     });
+
+    await this.logs.audit('User login', user.id);
 
     return {
       accessToken,
@@ -71,10 +82,10 @@ export class AuthService {
       return { message };
     }
 
-    // await this. TO-DO: Realizar lógica do envio de e-mail com o código de redefinição de senha
-    console.info(
-      `Código de redefinição de senha para o usuário ${user.id}: ${resetCode}`,
-    );
+    await this.logs.audit('Forgot password', user.id);
+
+    await this.mail.sendPasswordReset(body.email, resetCode, expiresAt);
+
     await this.prisma.passwordResetToken.upsert({
       where: { userId: user.id },
       create: {
@@ -118,6 +129,8 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(data.newPassword, 10);
 
+    await this.logs.audit('Reset password', user.id);
+
     try {
       await this.prisma.user.update({
         where: { id: user.id },
@@ -135,9 +148,8 @@ export class AuthService {
     return { message: 'Senha redefinida com sucesso.' };
   }
 
-  async changePassword(data: ChangePasswordDto) {
-    //TO-DO: Mudar para trazer o usuário logado com jwt
-    const email = data.email;
+  async changePassword(req: any, data: ChangePasswordDto) {
+    const email = req.user.email;
     const user = await this.prisma.user.findUnique({ where: { email } });
 
     const errorMessage = 'Não foi possível alterar a senha';
@@ -152,6 +164,8 @@ export class AuthService {
     );
 
     const hashedPassword = await bcrypt.hash(data.newPassword, 10);
+
+    await this.logs.audit('Change password', user.id);
 
     if (samePassword) {
       await this.prisma.user.update({

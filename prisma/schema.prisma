@@ -33,6 +33,17 @@ model User {
   studentAssignments StudentAssignment[]
 }
 
+// Logs
+
+model AuditEvent {
+  id        String      @id @default(cuid())
+  action    String
+  actorId   String?
+  createdAt DateTime    @default(now())
+  
+  @@index([action, createdAt])
+}
+
 // Reset Token
 
 model PasswordResetToken {
