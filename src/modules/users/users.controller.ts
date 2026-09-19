@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
@@ -21,8 +22,8 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Post()
-  createUser(@Body() createUserDto: CreateUserDto) {
-    return this.usersService.createUser(createUserDto);
+  createUserFromAdmin(@Body() createUserDto: CreateUserDto) {
+    return this.usersService.createUserFromAdmin(createUserDto);
   }
 
   @Get()
@@ -42,7 +43,8 @@ export class UsersController {
   }
 
   @Delete(':id')
-  deleteUser(@Param('id') id: string) {
-    return this.usersService.deleteUser(id);
+  @Roles(`ADMIN`, `COORDINATOR`, `STUDENT`, `TEACHER`)
+  deleteUser(@Req() req: any, @Param('id') id: string) {
+    return this.usersService.deleteUser(req, id);
   }
 }

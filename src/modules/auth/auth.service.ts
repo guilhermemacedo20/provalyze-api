@@ -35,6 +35,13 @@ export class AuthService {
         'É necessário solicitar o reset de senha.',
       );
     }
+
+    if (user.anonymizedAt) {
+      throw new UnauthorizedException(
+        'Entre em contato com o time de suporte, seu usuário se encontra excluido.',
+      );
+    }
+
     const invalid = !(await bcrypt.compare(data.password, user.password));
 
     if (invalid) {
@@ -70,6 +77,7 @@ export class AuthService {
 
     const message =
       'Se o e-mail existir, enviaremos um código para redefinir a senha.';
+
     if (!user) {
       return { message };
     }
@@ -77,7 +85,7 @@ export class AuthService {
     await this.logs.audit('Forgot password', user.id);
 
     await this.mail.sendPasswordReset(body.email, resetCode, expiresAt);
-    
+
     await this.prisma.passwordResetToken.upsert({
       where: { userId: user.id },
       create: {
@@ -140,9 +148,8 @@ export class AuthService {
     return { message: 'Senha redefinida com sucesso.' };
   }
 
-  async changePassword(data: ChangePasswordDto) {
-    //TO-DO: Mudar para trazer o usuário logado com jwt
-    const email = data.email;
+  async changePassword(req: any, data: ChangePasswordDto) {
+    const email = req.user.email;
     const user = await this.prisma.user.findUnique({ where: { email } });
 
     const errorMessage = 'Não foi possível alterar a senha';
