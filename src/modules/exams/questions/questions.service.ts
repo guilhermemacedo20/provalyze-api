@@ -2,25 +2,17 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { CreateQuestionDto, ListQuestionsDto } from './dto/questions.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { QuestionType, Role } from '@prisma/client';
+import { QuestionType } from '@prisma/client';
 
 @Injectable()
 export class QuestionsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async createQuestion(req: any, createQuestion: CreateQuestionDto) {
-    // TO-DO: Ajustar para trazer o usuário logado
-    const user = await this.prisma.user.findUnique({
-      where: { email: req.headers['x-user-email'] },
-    });
-
-    if (!user || user.role !== Role.TEACHER) {
-      throw new UnauthorizedException('Acesso não autorizado');
-    }
+    const user = req.user;
 
     const theme = await this.prisma.theme.findFirst({
       where: { id: createQuestion.themeId, userId: user.id },
@@ -79,16 +71,7 @@ export class QuestionsService {
   }
 
   async listQuestion(req: any, id: string) {
-    // TO-DO: Ajustar para trazer o usuário logado
-    const user = await this.prisma.user.findUnique({
-      where: { email: req.headers['x-user-email'] },
-    });
-
-    if (!user || user.role !== Role.TEACHER) {
-      throw new UnauthorizedException(
-        'Não foi possível buscar a questão mencionada.',
-      );
-    }
+    const user = req.user;
 
     const question = await this.prisma.question.findFirst({
       where: { id, userId: user.id },
@@ -107,16 +90,7 @@ export class QuestionsService {
   }
 
   async listQuestions(req: any, query: ListQuestionsDto) {
-    // TO-DO: Ajustar para trazer o usuário logado
-    const user = await this.prisma.user.findUnique({
-      where: { email: req.headers['x-user-email'] },
-    });
-
-    if (!user || user.role !== Role.TEACHER) {
-      throw new UnauthorizedException(
-        'Essa busca pode ser realizada apenas por professores.',
-      );
-    }
+    const user = req.user;
 
     const questions = await this.prisma.question.findMany({
       where: {
@@ -133,15 +107,8 @@ export class QuestionsService {
     id: string,
     updateQuestionDto: CreateQuestionDto,
   ) {
-    // TO-DO: Ajustar para trazer o usuário logado
-    const user = await this.prisma.user.findUnique({
-      where: { email: req.headers['x-user-email'] },
-    });
-    if (!user || user.role !== Role.TEACHER) {
-      throw new UnauthorizedException(
-        'Não foi possível atualizar a questão mencionada.',
-      );
-    }
+    const user = req.user;
+
     const theme = await this.prisma.theme.findFirst({
       where: { id: updateQuestionDto.themeId, userId: user.id },
     });
@@ -191,16 +158,7 @@ export class QuestionsService {
   }
 
   async deleteQuestion(req: any, id: string) {
-    // TO-DO: Ajustar para trazer o usuário logado
-    const user = await this.prisma.user.findUnique({
-      where: { email: req.headers['x-user-email'] },
-    });
-
-    if (!user || user.role !== Role.TEACHER) {
-      throw new UnauthorizedException(
-        'Essa busca pode ser realizada apenas por professores.',
-      );
-    }
+    const user = req.user;
 
     const existing = await this.prisma.question.findFirst({
       where: { id, userId: user.id },

@@ -4,29 +4,16 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { CreateUserDto, UpdateUserDto } from './dto/users.dto';
+import { CreateUserDto, RegisterDto, UpdateUserDto } from './dto/users.dto';
 import { Prisma, Role } from '@prisma/client';
 
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async requireAdmin(req: any) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: req.headers['x-user-email'] },
-    });
-
-    if (!user || user.role !== Role.ADMIN) {
-      throw new UnauthorizedException('Usuário não autorizado');
-    }
-
-    return user;
-  }
-
-  async listUsers(req: any) {
-    await this.requireAdmin(req);
-
+  async listUsers() {
     const users = await this.prisma.user.findMany({
       where: { anonymizedAt: null },
       orderBy: { name: 'asc' },
@@ -61,26 +48,50 @@ export class UsersService {
     });
   }
 
-  async createUser(req: any, createUserDto: CreateUserDto) {
-    await this.requireAdmin(req);
+  async registerUser(data: RegisterDto) {
+    const email = data.email;
+    const hasUser = await this.prisma.user.findUnique({ where: { email } });
+    const hashPassword = await bcrypt.hash(data.password, 10);
+    if (hasUser) {
+      throw new UnauthorizedException('Usuário já possui conta cadastrada');
+    }
 
-    const email = createUserDto.email.trim().toLowerCase();
+    if (data.role !== Role.STUDENT && data.role !== Role.TEACHER) {
+      throw new UnauthorizedException('Perfil de acesso não permitido');
+    }
 
+    const userCreated = await this.prisma.user.create({
+      data: { ...data, password: hashPassword },
+    });
+
+    return {
+      user: {
+        name: userCreated.name,
+        email: userCreated.email,
+        id: userCreated.id,
+      },
+    };
+  }
+
+  async createUserFromAdmin(createUserDto: CreateUserDto) {
     try {
       return await this.prisma.user.create({
-        data: { ...createUserDto, email },
+        data: createUserDto,
       });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        throw new BadRequestException('Já existe um usuário cadastrado com esse e-mail.');
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new BadRequestException(
+          'Já existe um usuário cadastrado com esse e-mail.',
+        );
       }
       throw error;
     }
   }
 
-  async getUser(req: any, id: string) {
-    await this.requireAdmin(req);
-
+  async getUser(id: string) {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) {
       throw new NotFoundException('Usuário não encontrado');
@@ -88,32 +99,31 @@ export class UsersService {
     return user;
   }
 
-  async updateUser(req: any, id: string, updateUserDto: UpdateUserDto) {
-    await this.requireAdmin(req);
-
+  async updateUser(id: string, updateUserDto: UpdateUserDto) {
     const existing = await this.prisma.user.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException('Usuário não encontrado');
     }
 
-    const email = updateUserDto.email.trim().toLowerCase();
-
     try {
       return await this.prisma.user.update({
         where: { id },
-        data: { ...updateUserDto, email },
+        data: updateUserDto,
       });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        throw new BadRequestException('Já existe um usuário cadastrado com esse e-mail.');
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new BadRequestException(
+          'Já existe um usuário cadastrado com esse e-mail.',
+        );
       }
       throw error;
     }
   }
 
-  async deleteUser(req: any, id: string) {
-    await this.requireAdmin(req);
-
+  async deleteUser(id: string) {
     const existing = await this.prisma.user.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException('Usuário não encontrado');

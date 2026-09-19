@@ -2,7 +2,6 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateClassDto } from './dto/classes.dto';
@@ -11,18 +10,6 @@ import { Role } from '@prisma/client';
 @Injectable()
 export class ClassesService {
   constructor(private readonly prisma: PrismaService) {}
-
-  private async requireAdmin(req: any) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: req.headers['x-user-email'] },
-    });
-
-    if (!user || user.role !== Role.ADMIN) {
-      throw new UnauthorizedException('Usuário não autorizado');
-    }
-
-    return user;
-  }
 
   private async generateJoinCode(): Promise<string> {
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -37,9 +24,7 @@ export class ClassesService {
     );
   }
 
-  async createClass(req: any, createClassDto: CreateClassDto) {
-    await this.requireAdmin(req);
-
+  async createClass(createClassDto: CreateClassDto) {
     const subject = await this.prisma.subject.findUnique({
       where: { id: createClassDto.subjectId },
     });
@@ -70,9 +55,7 @@ export class ClassesService {
     });
   }
 
-  async listClasses(req: any) {
-    await this.requireAdmin(req);
-
+  async listClasses() {
     const classes = await this.prisma.class.findMany({
       include: {
         subject: { include: { course: { select: { name: true } } } },
@@ -99,9 +82,7 @@ export class ClassesService {
     }));
   }
 
-  async getClass(req: any, id: string) {
-    await this.requireAdmin(req);
-
+  async getClass(id: string) {
     const schoolClass = await this.prisma.class.findUnique({
       where: { id },
       include: {
@@ -138,9 +119,7 @@ export class ClassesService {
     };
   }
 
-  async addStudent(req: any, classId: string, studentId: string) {
-    await this.requireAdmin(req);
-
+  async addStudent(classId: string, studentId: string) {
     const schoolClass = await this.prisma.class.findUnique({
       where: { id: classId },
     });
@@ -161,7 +140,9 @@ export class ClassesService {
       where: { classId, userId: studentId, endedAt: null },
     });
     if (existing) {
-      throw new BadRequestException('Esse aluno já está matriculado nessa turma');
+      throw new BadRequestException(
+        'Esse aluno já está matriculado nessa turma',
+      );
     }
 
     return this.prisma.studentAssignment.create({
@@ -169,9 +150,7 @@ export class ClassesService {
     });
   }
 
-  async removeStudent(req: any, classId: string, studentId: string) {
-    await this.requireAdmin(req);
-
+  async removeStudent(classId: string, studentId: string) {
     const assignment = await this.prisma.studentAssignment.findFirst({
       where: { classId, userId: studentId, endedAt: null },
     });
@@ -186,9 +165,7 @@ export class ClassesService {
     });
   }
 
-  async deleteClass(req: any, id: string) {
-    await this.requireAdmin(req);
-
+  async deleteClass(id: string) {
     const existing = await this.prisma.class.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException('Turma não encontrada');
