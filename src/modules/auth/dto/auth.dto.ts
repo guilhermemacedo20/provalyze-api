@@ -1,5 +1,6 @@
+import { Role } from '@prisma/client';
 import { Transform } from 'class-transformer';
-import { IsEmail, IsString, Length, MinLength } from 'class-validator';
+import { IsEmail, IsEnum, IsString, Length, MinLength } from 'class-validator';
 
 export class LoginDto {
   @Transform(({ value }: { value: unknown }) => {
@@ -42,7 +43,6 @@ export class ResetPasswordDto {
   code!: string;
 
   @IsString()
-  @MinLength(8)
   newPassword!: string;
 }
 
@@ -61,6 +61,25 @@ export class ChangePasswordDto {
   actualPassword!: string;
 
   @IsString()
-  @MinLength(8)
   newPassword!: string;
+}
+
+export class RegisterDto {
+  @Transform(({ value }: { value: unknown }) => {
+    if (typeof value === 'string') {
+      return value.trim().toLowerCase();
+    }
+    return value as string;
+  })
+  @IsEmail()
+  email!: string;
+
+  @IsString()
+  password!: string;
+
+  @IsString()
+  name!: string;
+
+  @IsEnum(Role)
+  role!: Role;
 }

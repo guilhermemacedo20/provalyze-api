@@ -1,16 +1,24 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import {
   ChangePasswordDto,
   ForgotPasswordDto,
   LoginDto,
+  RegisterDto,
   ResetPasswordDto,
 } from './dto/auth.dto';
 import { generateCode } from 'src/common/utils/generateCode';
+import { assertPasswordStrength } from 'src/common/utils/password';
 import { JwtService } from '@nestjs/jwt';
 import { LogsService } from 'src/infra/logs/logs.service';
 import { MailService } from 'src/infra/mail/mail.service';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { Role } from '@prisma/client';
 
 @Injectable()
 export class AuthService {
@@ -127,9 +135,9 @@ export class AuthService {
       throw new UnauthorizedException(errorMessage);
     }
 
-    const passwordHash = await bcrypt.hash(data.newPassword, 10);
+    assertPasswordStrength(data.newPassword);
 
-    await this.logs.audit('Reset password', user.id);
+    const passwordHash = await bcrypt.hash(data.newPassword, 10);
 
     try {
       await this.prisma.user.update({
@@ -141,9 +149,11 @@ export class AuthService {
         where: { userId: user.id },
         data: { usedAt: new Date() },
       });
-    } catch (err) {
-      return { message: 'Ocorreu um erro ao atualizar a senha' };
+    } catch {
+      throw new BadRequestException('Ocorreu um erro ao atualizar a senha');
     }
+
+    await this.logs.audit('Reset password', user.id);
 
     return { message: 'Senha redefinida com sucesso.' };
   }
@@ -163,20 +173,55 @@ export class AuthService {
       user.password,
     );
 
-    const hashedPassword = await bcrypt.hash(data.newPassword, 10);
-
-    await this.logs.audit('Change password', user.id);
-
-    if (samePassword) {
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: { password: hashedPassword },
-      });
-    } else {
+    if (!samePassword) {
       throw new UnauthorizedException(errorMessage);
     }
 
+    assertPasswordStrength(data.newPassword);
+
+    if (data.newPassword === data.actualPassword) {
+      throw new BadRequestException('A nova senha deve ser diferente da atual.');
+    }
+
+    const hashedPassword = await bcrypt.hash(data.newPassword, 10);
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashedPassword },
+    });
+
+    await this.logs.audit('Change password', user.id);
+
     return { message: 'Senha redefinida com sucesso.' };
+  }
+
+  async registerUser(data: RegisterDto) {
+    const email = data.email;
+    const hasUser = await this.prisma.user.findUnique({ where: { email } });
+
+    if (hasUser) {
+      throw new ConflictException('Usuário já possui conta cadastrada');
+    }
+
+    if (data.role !== Role.STUDENT && data.role !== Role.TEACHER) {
+      throw new BadRequestException('Perfil de acesso não permitido');
+    }
+
+    assertPasswordStrength(data.password);
+
+    const hashPassword = await bcrypt.hash(data.password, 10);
+
+    const userCreated = await this.prisma.user.create({
+      data: { ...data, password: hashPassword },
+    });
+
+    return {
+      user: {
+        name: userCreated.name,
+        email: userCreated.email,
+        id: userCreated.id,
+      },
+    };
   }
 
   async me(loggedUser: { email: string; id: string }) {

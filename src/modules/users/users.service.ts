@@ -1,12 +1,10 @@
 import {
   BadRequestException,
-  ConflictException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import * as bcrypt from 'bcrypt';
-import { CreateUserDto, RegisterDto, UpdateUserDto } from './dto/users.dto';
+import { CreateUserDto, UpdateUserDto } from './dto/users.dto';
 import { Prisma, Role } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 
@@ -47,33 +45,6 @@ export class UsersService {
         createdAt: user.createdAt,
       };
     });
-  }
-
-  async registerUser(data: RegisterDto) {
-    const email = data.email;
-    const hasUser = await this.prisma.user.findUnique({ where: { email } });
-
-    if (hasUser) {
-      throw new ConflictException('Usuário já possui conta cadastrada');
-    }
-
-    if (data.role !== Role.STUDENT && data.role !== Role.TEACHER) {
-      throw new BadRequestException('Perfil de acesso não permitido');
-    }
-
-    const hashPassword = await bcrypt.hash(data.password, 10);
-
-    const userCreated = await this.prisma.user.create({
-      data: { ...data, password: hashPassword },
-    });
-
-    return {
-      user: {
-        name: userCreated.name,
-        email: userCreated.email,
-        id: userCreated.id,
-      },
-    };
   }
 
   async createUserFromAdmin(createUserDto: CreateUserDto) {

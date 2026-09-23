@@ -5,6 +5,7 @@ import {
   ForgotPasswordDto,
   ResetPasswordDto,
   ChangePasswordDto,
+  RegisterDto,
 } from './dto/auth.dto';
 import { JwtAuthGuard } from 'src/common/guards/jwt.guard';
 
@@ -31,6 +32,11 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   changePassword(@Req() req: any, @Body() body: ChangePasswordDto) {
     return this.authService.changePassword(req, body);
+  }
+
+  @Post('/register')
+  registerUser(@Body() registerUser: RegisterDto) {
+    return this.authService.registerUser(registerUser);
   }
 
   @Get('me')
