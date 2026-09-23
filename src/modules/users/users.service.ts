@@ -1,13 +1,12 @@
 import {
   BadRequestException,
-  ConflictException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
-import * as bcrypt from 'bcrypt';
-import { PrismaService } from 'src/prisma/prisma.service';
-import { CreateUserDto, RegisterDto, UpdateUserDto } from './dto/users.dto';
+import { CreateUserDto, UpdateUserDto } from './dto/users.dto';
 import { Prisma, Role } from '@prisma/client';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
 
 @Injectable()
 export class UsersService {
@@ -46,33 +45,6 @@ export class UsersService {
         createdAt: user.createdAt,
       };
     });
-  }
-
-  async registerUser(data: RegisterDto) {
-    const email = data.email;
-    const hasUser = await this.prisma.user.findUnique({ where: { email } });
-
-    if (hasUser) {
-      throw new ConflictException('Usuário já possui conta cadastrada');
-    }
-
-    if (data.role !== Role.STUDENT && data.role !== Role.TEACHER) {
-      throw new BadRequestException('Perfil de acesso não permitido');
-    }
-
-    const hashPassword = await bcrypt.hash(data.password, 10);
-
-    const userCreated = await this.prisma.user.create({
-      data: { ...data, password: hashPassword },
-    });
-
-    return {
-      user: {
-        name: userCreated.name,
-        email: userCreated.email,
-        id: userCreated.id,
-      },
-    };
   }
 
   async createUserFromAdmin(createUserDto: CreateUserDto) {
@@ -125,8 +97,19 @@ export class UsersService {
     }
   }
 
-  async deleteUser(id: string) {
-    const existing = await this.prisma.user.findUnique({ where: { id } });
+  async deleteUser(req: any, id: string) {
+    const isAdmin = req.user.role === 'ADMIN';
+
+    if (!isAdmin && req.user.id !== id) {
+      throw new UnauthorizedException(
+        'Perfil de acesso sem permissão para realizar esse processo',
+      );
+    }
+
+    const existing = await this.prisma.user.findUnique({
+      where: { id },
+    });
+
     if (!existing) {
       throw new NotFoundException('Usuário não encontrado');
     }

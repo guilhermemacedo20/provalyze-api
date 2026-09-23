@@ -14,6 +14,25 @@ enum Role {
   COORDINATOR
 }
 
+enum ExamStatus {
+  DRAFT
+  PUBLISHED
+  ENDED
+}
+
+enum SessionStatus {
+  PENDING
+  STARTED
+  FINISHED
+  EXPIRED
+}
+
+enum GradeStatus {
+  PENDING
+  AUTO
+  TEACHER_APPROVED
+}
+
 model User {
   id        String   @id @default(cuid())
   name      String
@@ -28,9 +47,22 @@ model User {
   passwordResetTokens PasswordResetToken?
   themes    Theme[]
   questions Question[]
+  exams     Exam[]
+  sessions  ExamSession[]
 
   teacherAssignments TeacherAssignment[]
   studentAssignments StudentAssignment[]
+}
+
+// Logs
+
+model AuditEvent {
+  id        String      @id @default(cuid())
+  action    String
+  actorId   String?
+  createdAt DateTime    @default(now())
+  
+  @@index([action, createdAt])
 }
 
 // Reset Token
@@ -79,6 +111,7 @@ model Question {
   teacher         User             @relation(fields: [userId], references: [id])
   theme           Theme            @relation(fields: [themeId], references: [id], onDelete: Cascade)
   questionOptions QuestionOption[]
+  examQuestions   ExamQuestion[]
 }
 
 model QuestionOption {
@@ -123,6 +156,7 @@ model Class {
   subject            Subject             @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   teacherAssignments TeacherAssignment[]
   studentAssignments StudentAssignment[]
+  examAssignments    ExamAssignment[]
 
   @@unique([subjectId, name])
 }
@@ -147,4 +181,106 @@ model StudentAssignment {
 
   class   Class @relation(fields: [classId], references: [id], onDelete: Cascade)
   student User  @relation(fields: [userId], references: [id])
+}
+
+// Exams
+
+model Exam {
+  id              String     @id @default(cuid())
+  title           String
+  startsAt        DateTime
+  endsAt          DateTime
+  targetScore     Float
+  status          ExamStatus @default(DRAFT)
+  durationMinutes Int
+  userId          String
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @default(now()) @updatedAt
+
+  teacher       User             @relation(fields: [userId], references: [id])
+  examQuestions ExamQuestion[]
+  assignments   ExamAssignment[]
+  sessions      ExamSession[]
+
+  @@index([userId])
+  @@index([startsAt, endsAt])
+}
+
+model ExamQuestion {
+  id         String @id @default(cuid())
+  examId     String
+  questionId String
+  points     Float
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  exam     Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  answers  Answer[]
+
+  @@unique([examId, questionId])
+}
+
+model ExamAssignment {
+  id        String   @id @default(cuid())
+  examId    String
+  classId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  exam  Exam  @relation(fields: [examId], references: [id], onDelete: Cascade)
+  class Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([examId, classId])
+}
+
+model ExamSession {
+  id         String        @id @default(cuid())
+  examId     String
+  userId     String
+  startedAt  DateTime?
+  finishedAt DateTime?
+  status     SessionStatus @default(PENDING)
+  score      Float?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @default(now()) @updatedAt
+
+  exam    Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)
+  student User         @relation(fields: [userId], references: [id])
+  answers Answer[]
+  events  ExamEvent[]
+
+  @@unique([examId, userId])
+  @@index([userId])
+}
+
+model Answer {
+  id               String      @id @default(cuid())
+  sessionId        String
+  examQuestionId   String
+  content          String
+  isCorrect        Boolean
+  score            Float
+  gradeStatus      GradeStatus @default(PENDING)
+  aiSuggestedScore Float?
+  aiJustification  String?
+  teacherFeedback  String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @default(now()) @updatedAt
+
+  session      ExamSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  examQuestion ExamQuestion @relation(fields: [examQuestionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, examQuestionId])
+}
+
+model ExamEvent {
+  id        String   @id @default(cuid())
+  sessionId String
+  type      String
+  createdAt DateTime @default(now())
+
+  session ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
 }
