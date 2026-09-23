@@ -174,13 +174,15 @@ export class AuthService {
     );
 
     if (!samePassword) {
-      throw new UnauthorizedException(errorMessage);
+      throw new BadRequestException(errorMessage);
     }
 
     assertPasswordStrength(data.newPassword);
 
     if (data.newPassword === data.actualPassword) {
-      throw new BadRequestException('A nova senha deve ser diferente da atual.');
+      throw new BadRequestException(
+        'A nova senha deve ser diferente da atual.',
+      );
     }
 
     const hashedPassword = await bcrypt.hash(data.newPassword, 10);
