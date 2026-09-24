@@ -26,13 +26,13 @@ export class ClassesController {
   }
 
   @Get()
-  listClasses() {
-    return this.classesService.listClasses();
+  listClasses(@Req() req: any) {
+    return this.classesService.listClasses(req);
   }
 
   @Get(':id')
-  getClass(@Param('id') id: string) {
-    return this.classesService.getClass(id);
+  getClass(@Req() req: any, @Param('id') id: string) {
+    return this.classesService.getClass(req, id);
   }
 
   @Post(':id/students')

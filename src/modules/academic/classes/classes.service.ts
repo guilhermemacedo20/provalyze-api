@@ -15,6 +15,19 @@ export class ClassesService {
     private readonly logs: LogsService,
   ) {}
 
+  private async assertTeacherOwnClass(user: any, classId: string) {
+    if (user.role !== Role.TEACHER) {
+      return;
+    }
+
+    const assignment = await this.prisma.teacherAssignment.findFirst({
+      where: { classId, userId: user.id, endedAt: null },
+    });
+    if (!assignment) {
+      throw new NotFoundException('Turma não encontrada');
+    }
+  }
+
   private async generateJoinCode(): Promise<string> {
     for (let attempt = 0; attempt < 5; attempt++) {
       const code = Math.random().toString(36).slice(2, 10);
@@ -29,9 +42,12 @@ export class ClassesService {
   }
 
   async createClass(req: any, createClassDto: CreateClassDto) {
+    const user = req.user;
+    const isTeacher = user.role === Role.TEACHER;
     const subject = await this.prisma.subject.findUnique({
       where: { id: createClassDto.subjectId },
     });
+
     if (!subject) {
       throw new NotFoundException('Matéria não encontrada');
     }
@@ -39,7 +55,11 @@ export class ClassesService {
     const teacher = await this.prisma.user.findUnique({
       where: { id: createClassDto.teacherId },
     });
-    if (!teacher || teacher.role !== Role.TEACHER) {
+    if (
+      !teacher ||
+      teacher.role !== Role.TEACHER ||
+      (isTeacher && createClassDto.teacherId !== user.id)
+    ) {
       throw new BadRequestException(
         'O usuário selecionado não é um professor válido',
       );
@@ -56,12 +76,21 @@ export class ClassesService {
         },
       },
     });
-    await this.logs.audit(`Class Created ${classCreated.id}`, req.user.id);
+    await this.logs.audit(`Class Created ${classCreated.id}`, user.id);
     return classCreated;
   }
 
-  async listClasses() {
+  async listClasses(req: any) {
+    const user = req.user;
+    const isTeacher = user.role === Role.TEACHER;
     const classes = await this.prisma.class.findMany({
+      where: isTeacher
+        ? {
+            teacherAssignments: {
+              some: { userId: user.id },
+            },
+          }
+        : undefined,
       include: {
         subject: { include: { course: { select: { name: true } } } },
         teacherAssignments: {
@@ -87,7 +116,9 @@ export class ClassesService {
     }));
   }
 
-  async getClass(id: string) {
+  async getClass(req: any, id: string) {
+    await this.assertTeacherOwnClass(req.user, id);
+
     const schoolClass = await this.prisma.class.findUnique({
       where: { id },
       include: {
@@ -125,6 +156,8 @@ export class ClassesService {
   }
 
   async addStudent(req: any, classId: string, studentId: string) {
+    await this.assertTeacherOwnClass(req.user, classId);
+
     const schoolClass = await this.prisma.class.findUnique({
       where: { id: classId },
     });
@@ -159,6 +192,8 @@ export class ClassesService {
   }
 
   async removeStudent(req: any, classId: string, studentId: string) {
+    await this.assertTeacherOwnClass(req.user, classId);
+
     const assignment = await this.prisma.studentAssignment.findFirst({
       where: { classId, userId: studentId, endedAt: null },
     });
@@ -179,6 +214,8 @@ export class ClassesService {
   }
 
   async deleteClass(req: any, id: string) {
+    await this.assertTeacherOwnClass(req.user, id);
+
     const existing = await this.prisma.class.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException('Turma não encontrada');

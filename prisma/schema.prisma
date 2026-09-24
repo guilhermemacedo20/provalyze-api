@@ -158,8 +158,6 @@ model Class {
   teacherAssignments TeacherAssignment[]
   studentAssignments StudentAssignment[]
   examAssignments    ExamAssignment[]
-
-  @@unique([subjectId, name])
 }
 
 model TeacherAssignment {
