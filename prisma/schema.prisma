@@ -104,6 +104,7 @@ model Question {
   type          QuestionType?
   themeId       String
   correctOption String?
+  imageUrl      String?
   userId        String
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
@@ -157,8 +158,6 @@ model Class {
   teacherAssignments TeacherAssignment[]
   studentAssignments StudentAssignment[]
   examAssignments    ExamAssignment[]
-
-  @@unique([subjectId, name])
 }
 
 model TeacherAssignment {

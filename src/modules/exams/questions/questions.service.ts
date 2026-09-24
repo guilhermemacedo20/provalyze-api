@@ -35,6 +35,7 @@ export class QuestionsService {
         data: {
           statement: createQuestion.statement,
           type: 'OPEN_ENDED',
+          imageUrl: createQuestion.imageUrl,
           themeId: createQuestion.themeId,
           userId: user.id,
         },
@@ -47,6 +48,7 @@ export class QuestionsService {
           statement: createQuestion.statement,
           type: 'MULTIPLE_CHOICE',
           themeId: createQuestion.themeId,
+          imageUrl: createQuestion.imageUrl,
           correctOption: createQuestion.correctOption,
           userId: user.id,
           ...(options
@@ -143,6 +145,7 @@ export class QuestionsService {
         statement: updateQuestionDto.statement,
         type: updateQuestionDto.type,
         themeId: updateQuestionDto.themeId,
+        imageUrl: updateQuestionDto.imageUrl,
         correctOption: isMultiple ? updateQuestionDto.correctOption : null,
         ...(isMultiple && options.length
           ? {

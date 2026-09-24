@@ -27,9 +27,9 @@ export class UsersController {
   }
 
   @Get()
-  @Roles('ADMIN', 'COORDINATOR')
-  listUsers() {
-    return this.usersService.listUsers();
+  @Roles('ADMIN', 'TEACHER', 'COORDINATOR')
+  listUsers(@Req() req: any) {
+    return this.usersService.listUsers(req);
   }
 
   @Get(':id')

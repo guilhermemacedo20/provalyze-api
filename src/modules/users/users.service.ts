@@ -12,9 +12,13 @@ import { PrismaService } from 'src/infra/prisma/prisma.service';
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listUsers() {
+  async listUsers(req: any) {
+    const user = req.user;
+    const isTeacher = user.role === Role.TEACHER;
     const users = await this.prisma.user.findMany({
-      where: { anonymizedAt: null },
+      where: isTeacher
+        ? { role: 'STUDENT', anonymizedAt: null }
+        : { anonymizedAt: null },
       orderBy: { name: 'asc' },
       include: {
         teacherAssignments: {

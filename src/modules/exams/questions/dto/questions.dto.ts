@@ -7,7 +7,7 @@ import {
   IsEnum,
   IsOptional,
   IsString,
-  ValidateIf
+  ValidateIf,
 } from 'class-validator';
 
 export class CreateQuestionDto {
@@ -19,6 +19,9 @@ export class CreateQuestionDto {
 
   @IsString()
   themeId!: string;
+
+  @IsString()
+  imageUrl?: string;
 
   @IsOptional()
   @IsString()
