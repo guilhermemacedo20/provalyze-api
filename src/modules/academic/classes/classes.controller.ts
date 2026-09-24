@@ -22,7 +22,7 @@ export class ClassesController {
 
   @Post()
   createClass(@Req() req: any, @Body() createClassDto: CreateClassDto) {
-    return this.classesService.createClass(createClassDto);
+    return this.classesService.createClass(req, createClassDto);
   }
 
   @Get()
@@ -36,20 +36,25 @@ export class ClassesController {
   }
 
   @Post(':id/students')
-  addStudent(@Param('id') id: string, @Body() addStudentDto: AddStudentDto) {
-    return this.classesService.addStudent(id, addStudentDto.studentId);
+  addStudent(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() addStudentDto: AddStudentDto,
+  ) {
+    return this.classesService.addStudent(req, id, addStudentDto.studentId);
   }
 
   @Delete(':id/students/:studentId')
   removeStudent(
+    @Req() req: any,
     @Param('id') id: string,
     @Param('studentId') studentId: string,
   ) {
-    return this.classesService.removeStudent(id, studentId);
+    return this.classesService.removeStudent(req, id, studentId);
   }
 
   @Delete(':id')
-  deleteClass(@Param('id') id: string) {
-    return this.classesService.deleteClass(id);
+  deleteClass(@Req() req: any, @Param('id') id: string) {
+    return this.classesService.deleteClass(req, id);
   }
 }

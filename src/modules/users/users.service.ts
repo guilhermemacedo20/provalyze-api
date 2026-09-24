@@ -2,10 +2,11 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
-import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateUserDto, UpdateUserDto } from './dto/users.dto';
 import { Prisma, Role } from '@prisma/client';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
 
 @Injectable()
 export class UsersService {
@@ -46,7 +47,7 @@ export class UsersService {
     });
   }
 
-  async createUser(createUserDto: CreateUserDto) {
+  async createUserFromAdmin(createUserDto: CreateUserDto) {
     try {
       return await this.prisma.user.create({
         data: createUserDto,
@@ -96,8 +97,19 @@ export class UsersService {
     }
   }
 
-  async deleteUser(id: string) {
-    const existing = await this.prisma.user.findUnique({ where: { id } });
+  async deleteUser(req: any, id: string) {
+    const isAdmin = req.user.role === 'ADMIN';
+
+    if (!isAdmin && req.user.id !== id) {
+      throw new UnauthorizedException(
+        'Perfil de acesso sem permissão para realizar esse processo',
+      );
+    }
+
+    const existing = await this.prisma.user.findUnique({
+      where: { id },
+    });
+
     if (!existing) {
       throw new NotFoundException('Usuário não encontrado');
     }
