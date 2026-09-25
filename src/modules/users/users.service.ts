@@ -7,10 +7,14 @@ import {
 import { CreateUserDto, UpdateUserDto } from './dto/users.dto';
 import { Prisma, Role } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { MailService } from 'src/infra/mail/mail.service';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mail: MailService,
+  ) {}
 
   async listUsers(req: any) {
     const user = req.user;
@@ -52,21 +56,23 @@ export class UsersService {
   }
 
   async createUserFromAdmin(createUserDto: CreateUserDto) {
-    try {
-      return await this.prisma.user.create({
-        data: createUserDto,
-      });
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
-        throw new BadRequestException(
-          'Já existe um usuário cadastrado com esse e-mail.',
-        );
-      }
-      throw error;
+    const hasUser = await this.prisma.user.findUnique({
+      where: { email: createUserDto.email },
+    });
+
+    if (hasUser) {
+      throw new BadRequestException(
+        'Já existe um usuário cadastrado com esse e-mail.',
+      );
     }
+
+    const user = await this.prisma.user.create({
+      data: createUserDto,
+    });
+
+    await this.mail.sendCreateUser(createUserDto.email);
+
+    return user;
   }
 
   async getUser(id: string) {
