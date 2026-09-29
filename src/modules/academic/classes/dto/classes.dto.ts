@@ -15,3 +15,8 @@ export class AddStudentDto {
   @IsString()
   studentId!: string;
 }
+
+export class JoinClassDto {
+  @IsString()
+  code!: string;
+}
