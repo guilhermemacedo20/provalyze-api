@@ -114,6 +114,12 @@ export class UsersService {
       }
     }
 
+    if (existing.role === Role.ADMIN || existing.role === Role.COORDINATOR) {
+      return this.prisma.user.delete({
+        where: { id },
+      });
+    }
+
     return this.prisma.user.update({
       where: { id },
       data: {
