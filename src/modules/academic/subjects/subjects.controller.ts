@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { SubjectsService } from './subjects.service';
@@ -15,16 +16,17 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 
 @Controller('courses/:courseId/subjects')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN','COORDINATOR')
+@Roles('ADMIN', 'COORDINATOR')
 export class SubjectsController {
   constructor(private readonly subjectsService: SubjectsService) {}
 
   @Post()
   createSubject(
+    @Req() req: any,
     @Param('courseId') courseId: string,
     @Body() createSubjectDto: CreateSubjectDto,
   ) {
-    return this.subjectsService.createSubject(courseId, createSubjectDto);
+    return this.subjectsService.createSubject(req, courseId, createSubjectDto);
   }
 
   @Get()
@@ -34,9 +36,10 @@ export class SubjectsController {
 
   @Delete(':subjectId')
   deleteSubject(
+    @Req() req: any,
     @Param('courseId') courseId: string,
     @Param('subjectId') subjectId: string,
   ) {
-    return this.subjectsService.deleteSubject(courseId, subjectId);
+    return this.subjectsService.deleteSubject(req, courseId, subjectId);
   }
 }

@@ -2,18 +2,27 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
-import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateUserDto, UpdateUserDto } from './dto/users.dto';
 import { Prisma, Role } from '@prisma/client';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { MailService } from 'src/infra/mail/mail.service';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mail: MailService,
+  ) {}
 
-  async listUsers() {
+  async listUsers(req: any) {
+    const user = req.user;
+    const isTeacher = user.role === Role.TEACHER;
     const users = await this.prisma.user.findMany({
-      where: { anonymizedAt: null },
+      where: isTeacher
+        ? { role: 'STUDENT', anonymizedAt: null }
+        : { anonymizedAt: null },
       orderBy: { name: 'asc' },
       include: {
         teacherAssignments: {
@@ -46,22 +55,24 @@ export class UsersService {
     });
   }
 
-  async createUser(createUserDto: CreateUserDto) {
-    try {
-      return await this.prisma.user.create({
-        data: createUserDto,
-      });
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
-        throw new BadRequestException(
-          'Já existe um usuário cadastrado com esse e-mail.',
-        );
-      }
-      throw error;
+  async createUserFromAdmin(createUserDto: CreateUserDto) {
+    const hasUser = await this.prisma.user.findUnique({
+      where: { email: createUserDto.email },
+    });
+
+    if (hasUser) {
+      throw new BadRequestException(
+        'Já existe um usuário cadastrado com esse e-mail.',
+      );
     }
+
+    const user = await this.prisma.user.create({
+      data: createUserDto,
+    });
+
+    await this.mail.sendCreateUser(createUserDto.email);
+
+    return user;
   }
 
   async getUser(id: string) {
@@ -96,8 +107,19 @@ export class UsersService {
     }
   }
 
-  async deleteUser(id: string) {
-    const existing = await this.prisma.user.findUnique({ where: { id } });
+  async deleteUser(req: any, id: string) {
+    const isAdmin = req.user.role === 'ADMIN';
+
+    if (!isAdmin && req.user.id !== id) {
+      throw new UnauthorizedException(
+        'Perfil de acesso sem permissão para realizar esse processo',
+      );
+    }
+
+    const existing = await this.prisma.user.findUnique({
+      where: { id },
+    });
+
     if (!existing) {
       throw new NotFoundException('Usuário não encontrado');
     }
