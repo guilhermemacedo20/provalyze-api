@@ -1,4 +1,4 @@
-import { IsEmail, IsEnum, IsString } from 'class-validator';
+import { IsEmail, IsEnum, IsString} from 'class-validator';
 import { Role } from '@prisma/client';
 import { Transform } from 'class-transformer';
 
