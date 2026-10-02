@@ -1,11 +1,16 @@
 import { BadRequestException } from '@nestjs/common';
 import { Role } from '@prisma/client';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { UsersService } from './users.service';
 import { prismaMock } from 'src/test/mocks/prisma.mock';
+import { mailMock } from 'src/test/mocks/mail.mock';
 
 describe('UsersService', () => {
-  const service = new UsersService(prismaMock as unknown as PrismaService);
+  const service = new UsersService(
+    prismaMock as unknown as PrismaService,
+    mailMock,
+  );
+  const admin = { user: { id: '1', role: Role.ADMIN } };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -19,7 +24,7 @@ describe('UsersService', () => {
 
     prismaMock.user.create.mockResolvedValue({ id: '1' });
 
-    await service.deleteUser('1');
+    await service.deleteUser({ user: { id: '1', role: Role.TEACHER } }, '1');
 
     expect(prismaMock.user.update).toHaveBeenCalledWith({
       where: { id: '1' },
@@ -81,10 +86,10 @@ describe('UsersService', () => {
     });
     prismaMock.user.count.mockResolvedValue(1);
 
-    await expect(service.deleteUser('1')).rejects.toBeInstanceOf(
+    await expect(service.deleteUser(admin, '1')).rejects.toBeInstanceOf(
       BadRequestException,
     );
-    await expect(service.deleteUser('1')).rejects.toEqual(
+    await expect(service.deleteUser(admin, '1')).rejects.toEqual(
       expect.objectContaining({
         message: 'Não é possível excluir o único administrador do sistema.',
       }),
@@ -101,7 +106,7 @@ describe('UsersService', () => {
     prismaMock.user.count.mockResolvedValue(2);
     prismaMock.user.delete.mockResolvedValue({ id: '1' });
 
-    await service.deleteUser('1');
+    await service.deleteUser(admin, '1');
 
     expect(prismaMock.user.count).toHaveBeenCalledWith({
       where: { role: Role.ADMIN, anonymizedAt: null },
