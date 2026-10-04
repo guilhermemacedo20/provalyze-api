@@ -83,6 +83,35 @@ describe('Acadêmico (cursos, matérias e turmas) - integração (API + service 
     await expect(prisma.course.count()).resolves.toBe(0);
   });
 
+  it('deveRetornar409QuandoJaExisteCursoComOMesmoNome', async () => {
+    // Arrange
+    await prisma.course.create({ data: { name: 'Engenharia de Software' } });
+
+    // Act
+    const response = await request(app.getHttpServer())
+      .post('/api/courses')
+      .set(auth(adminToken))
+      .send({ name: 'Engenharia de Software' });
+
+    // Assert
+    expect(response.status).toBe(409);
+    expect(response.body.message).toBe('Já existe um curso com esse nome');
+    await expect(prisma.course.count()).resolves.toBe(1);
+  });
+
+  it('deveRetornar400QuandoNomeDoCursoEstaVazio', async () => {
+    // Act
+    const response = await request(app.getHttpServer())
+      .post('/api/courses')
+      .set(auth(adminToken))
+      .send({ name: '' });
+
+    // Assert
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain('name should not be empty');
+    await expect(prisma.course.count()).resolves.toBe(0);
+  });
+  
   it('deveRetornar404AoBuscarCursoInexistente', async () => {
     // Act
     const response = await request(app.getHttpServer())
