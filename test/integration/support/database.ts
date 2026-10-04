@@ -5,7 +5,7 @@ import request from 'supertest';
 
 export const DEFAULT_PASSWORD = 'Senha123';
 
-/** Apaga todos os dados do banco de teste, mantendo a estrutura. */
+//Apaga todos os dados do banco de teste, mantendo a estrutura.
 export async function cleanDatabase(prisma: PrismaClient) {
   const tables = await prisma.$queryRaw<Array<{ tablename: string }>>`
     SELECT tablename::text AS tablename FROM pg_tables
@@ -19,7 +19,7 @@ export async function cleanDatabase(prisma: PrismaClient) {
   );
 }
 
-/** Cria um usuário diretamente no banco, com senha já criptografada. */
+//Cria um usuário diretamente no banco.
 export async function createUser(
   prisma: PrismaClient,
   data: { name: string; email: string; role: Role; password?: string },
