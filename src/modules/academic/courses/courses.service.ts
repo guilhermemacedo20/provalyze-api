@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { CreateCourseDto, UpdateCourseDto } from './dto/courses.dto';
 import { LogsService } from 'src/infra/logs/logs.service';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
@@ -11,12 +16,16 @@ export class CoursesService {
   ) {}
 
   async createCourse(req: any, createCourseDto: CreateCourseDto) {
-    const courseCreated = await this.prisma.course.create({
-      data: { name: createCourseDto.name },
-    });
+    try {
+      const courseCreated = await this.prisma.course.create({
+        data: { name: createCourseDto.name },
+      });
 
-    await this.logs.audit(`Course created ${courseCreated.id} `, req.user.id);
-    return courseCreated;
+      await this.logs.audit(`Course created ${courseCreated.id} `, req.user.id);
+      return courseCreated;
+    } catch (error) {
+      this.handleDuplicatedName(error);
+    }
   }
 
   async listCourses() {
@@ -42,10 +51,14 @@ export class CoursesService {
       throw new NotFoundException('Curso não encontrado');
     }
     await this.logs.audit(`Course update ${id}`, req.user.id);
-    return this.prisma.course.update({
-      where: { id },
-      data: { name: updateCourseDto.name },
-    });
+    try {
+      return await this.prisma.course.update({
+        where: { id },
+        data: { name: updateCourseDto.name },
+      });
+    } catch (error) {
+      this.handleDuplicatedName(error);
+    }
   }
 
   async deleteCourse(req: any, id: string) {
@@ -58,5 +71,15 @@ export class CoursesService {
     await this.logs.audit(`Course deleted ${existing.id}`, req.user.id);
 
     return this.prisma.course.delete({ where: { id } });
+  }
+
+  private handleDuplicatedName(error: unknown): never {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
+      throw new ConflictException('Já existe um curso com esse nome');
+    }
+    throw error;
   }
 }
