@@ -191,7 +191,7 @@ model Exam {
   endsAt          DateTime
   targetScore     Float
   status          ExamStatus @default(DRAFT)
-  durationMinutes Int
+  durationMinutes Int?
   userId          String
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @default(now()) @updatedAt
