@@ -20,6 +20,7 @@ export class CreateQuestionDto {
   @IsString()
   themeId!: string;
 
+  @IsOptional()
   @IsString()
   imageUrl?: string;
 
