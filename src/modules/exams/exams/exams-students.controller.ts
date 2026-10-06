@@ -20,6 +20,11 @@ export class ExamsStudentsController {
     return this.examsService.getExam(req, classId, examId);
   }
 
+  @Get(':classId')
+  getStudentClassExams(@Req() req: any, @Param('classId') classId: string) {
+    return this.examsService.getStudentClassExams(req, classId);
+  }
+
   @Post(':classId/exams/:examId/submit')
   submitExam(
     @Req() req: any,
@@ -28,10 +33,5 @@ export class ExamsStudentsController {
     @Body() body: SubmitExamDto,
   ) {
     return this.examsService.submitExam(req, classId, examId,body);
-  }
-
-  @Get(':id')
-  getStudentClassExam(@Req() req: any, @Param('id') classId: string) {
-    return this.examsService.getStudentClassExam(req, classId);
   }
 }
