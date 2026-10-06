@@ -1,8 +1,9 @@
-import { Controller, UseGuards, Get, Param, Req } from '@nestjs/common';
+import { Controller, UseGuards, Get, Param, Req, Post, Body } from '@nestjs/common';
 import { ExamsService } from './exams.service';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt.guard';
 import { RolesGuard } from 'src/common/guards/role.guard';
+import { SubmitExamDto } from './dto/exams.dto';
 
 @Controller('classes-exams')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -17,6 +18,16 @@ export class ExamsStudentsController {
     @Param('examId') examId: string,
   ) {
     return this.examsService.getExam(req, classId, examId);
+  }
+
+  @Post(':classId/exams/:examId/submit')
+  submitExam(
+    @Req() req: any,
+    @Param('classId') classId: string,
+    @Param('examId') examId: string,
+    @Body() body: SubmitExamDto,
+  ) {
+    return this.examsService.submitExam(req, classId, examId,body);
   }
 
   @Get(':id')

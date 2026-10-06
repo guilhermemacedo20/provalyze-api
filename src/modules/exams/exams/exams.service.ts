@@ -3,9 +3,10 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { ExamStatus } from '@prisma/client';
+import { ExamStatus, SessionStatus } from '@prisma/client';
 import { LogsService } from 'src/infra/logs/logs.service';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { SubmitExamDto } from './dto/exams.dto';
 
 @Injectable()
 export class ExamsService {
@@ -104,12 +105,65 @@ export class ExamsService {
       return closed;
     }
 
+    let examSession = await this.prisma.examSession.findFirst({
+      where: { examId, userId: user.id },
+    });
+
+    if (examSession?.status === SessionStatus.FINISHED) {
+      return {
+        available: false as const,
+        message: 'Prova já finalizada',
+        startsAt: exam.startsAt,
+        endsAt: exam.endsAt,
+      };
+    }
+
+    if (examSession?.status === SessionStatus.EXPIRED) {
+      return {
+        available: false as const,
+        message: 'Tempo da prova esgotado',
+        startsAt: exam.startsAt,
+        endsAt: exam.endsAt,
+      };
+    }
+
+    if (!examSession) {
+      examSession = await this.prisma.examSession.create({
+        data: {
+          examId,
+          userId: user.id,
+          status: SessionStatus.STARTED,
+          startedAt: new Date(),
+        },
+      });
+      await this.logs.audit(`Iniciou a prova ${exam.title}`, user.id);
+    }
+
+    const expiresAt = this.expiresAt(exam, examSession.startedAt as Date);
+
+    if (examSession.startedAt && new Date() > expiresAt) {
+      await this.prisma.examSession.update({
+        where: { id: examSession.id },
+        data: { status: SessionStatus.EXPIRED },
+      });
+
+      return {
+        available: false as const,
+        message: 'Tempo da prova esgotado',
+        startsAt: exam.startsAt,
+        endsAt: exam.endsAt,
+      };
+    }
+
     return {
       available: true,
       id: exam.id,
       title: exam.title,
       startsAt: exam.startsAt,
       endsAt: exam.endsAt,
+      sessionId: examSession.id,
+      startedAt: examSession.startedAt,
+      expiresAt,
       targetScore: exam.targetScore,
       durationMinutes: exam.durationMinutes,
       status: exam.status,
@@ -130,6 +184,16 @@ export class ExamsService {
     };
   }
 
+  async submitExam(
+    req: any,
+    classId: string,
+    examId: string,
+    body: SubmitExamDto,
+  ) {
+    const user = req.user;
+    console.log(user);
+  }
+
   private shuffle<T>(items: T[]): T[] {
     const copy = [...items];
 
@@ -141,6 +205,21 @@ export class ExamsService {
     }
 
     return copy;
+  }
+
+  private expiresAt(
+    exam: { endsAt: Date; durationMinutes: number | null },
+    startedAt: Date,
+  ) {
+    if (!exam.durationMinutes || exam.durationMinutes <= 0) {
+      return exam.endsAt;
+    }
+
+    const durationEnd = new Date(
+      startedAt.getTime() + exam.durationMinutes * 60 * 1000,
+    );
+
+    return durationEnd < exam.endsAt ? durationEnd : exam.endsAt;
   }
 
   private closedExam(exam: {
