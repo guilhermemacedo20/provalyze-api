@@ -16,6 +16,7 @@ import {
 import { LogsService } from 'src/infra/logs/logs.service';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { SubmitExamDto, SubmitExamEventDto } from './dto/exams.dto';
+import { AIService } from 'src/infra/ai/ai.service';
 
 const examQuestionsInclude = {
   question: {
@@ -43,6 +44,7 @@ export class ExamsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly logs: LogsService,
+    private readonly aiService: AIService,
   ) {}
 
   async getStudentClassExams(req: any, classId: string) {
@@ -325,6 +327,97 @@ export class ExamsService {
     };
   }
 
+  async aiValidateQuestion(req: any, answerId: string) {
+    const userId = req.user.id;
+    const answer = await this.prisma.answer.findFirst({
+      where: { id: answerId },
+      select: {
+        content: true,
+        aiJustification: true,
+        aiSuggestedScore: true,
+        sessionId: true,
+        examQuestionId: true,
+        examQuestion: {
+          select: {
+            points: true,
+            question: {
+              select: {
+                type: true,
+                statement: true,
+                theme: { select: { name: true } },
+              },
+            },
+            exam: {
+              select: {
+                targetScore: true,
+                examQuestions: { select: { points: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!answer) {
+      throw new NotFoundException('Resposta não encontrada');
+    }
+
+    const teacherExam = await this.prisma.exam.findFirst({
+      where: {
+        examQuestions: { some: { id: answer.examQuestionId } },
+        assignments: {
+          some: {
+            class: {
+              teacherAssignments: {
+                some: { userId, endedAt: null },
+              },
+            },
+          },
+        },
+      },
+      select: { id: true },
+    });
+
+    if (!teacherExam) {
+      throw new UnauthorizedException(
+        'Você não tem permissão para validar essa questão',
+      );
+    }
+
+    if (answer.examQuestion.question.type !== QuestionType.OPEN_ENDED) {
+      throw new BadRequestException(
+        'A validação de questões só é permitida para questões dissertativas',
+      );
+    }
+
+    const maxScore = this.weightedScore(
+      answer.examQuestion.points,
+      answer.examQuestion.exam.examQuestions.reduce(
+        (total, item) => total + item.points,
+        0,
+      ),
+      answer.examQuestion.exam.targetScore,
+    );
+
+    if (answer.aiJustification && answer.aiSuggestedScore !== null) {
+      return {
+        suggestedScore: answer.aiSuggestedScore,
+        justification: answer.aiJustification,
+        maxScore,
+      };
+    }
+
+    const suggestion = await this.aiService.suggestAnswerScore(answer);
+
+    if (!suggestion) {
+      throw new BadRequestException(
+        'Não foi possível sugerir a nota dessa resposta',
+      );
+    }
+
+    return suggestion;
+  }
+
   private async assertStudentInClass(userId: string, classId: string) {
     const schoolClass = await this.prisma.class.findFirst({
       where: {
@@ -550,6 +643,18 @@ export class ExamsService {
     }
 
     return copy;
+  }
+
+  private weightedScore(
+    points: number,
+    totalPoints: number,
+    targetScore: number,
+  ) {
+    if (totalPoints <= 0) {
+      return 0;
+    }
+
+    return Math.round((points / totalPoints) * targetScore * 100) / 100;
   }
 
   private expiresAt(

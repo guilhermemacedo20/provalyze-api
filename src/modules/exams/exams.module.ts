@@ -6,8 +6,10 @@ import { ExamsService } from './exams/exams.service';
 import { ThemeService } from './theme/themes.service';
 import { ThemeController } from './theme/themes.controller';
 import { ExamsStudentsController } from './exams/exams-students.controller';
+import { AIModule } from 'src/infra/ai/ai.module';
 
 @Module({
+  imports: [AIModule],
   controllers: [
     ExamsController,
     ExamsStudentsController,
