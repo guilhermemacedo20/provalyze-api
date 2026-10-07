@@ -89,6 +89,19 @@ function round1(value: number) {
   return Math.round(value * 10) / 10;
 }
 
+function round2(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+// 7.5 -> "7,5" (para as mensagens de erro em português)
+function fmtPoints(value: number) {
+  return String(round2(value)).replace('.', ',');
+}
+
+function sumQuestionPoints(questions: { points: number }[]) {
+  return round2(questions.reduce((sum, q) => sum + q.points, 0));
+}
+
 function mapClass(c: ExamListRow['assignments'][number]['class']) {
   return {
     id: c.id,
@@ -224,10 +237,25 @@ export class ExamsService {
     }
   }
 
+  // vale para rascunho e publicação: nunca passar do total da prova
+  private assertPointsWithinTotal(
+    questions: { points: number }[],
+    totalScore: number,
+  ) {
+    const sum = sumQuestionPoints(questions);
+    if (sum > totalScore) {
+      throw new BadRequestException(
+        `A soma dos pontos das questões (${fmtPoints(sum)}) ultrapassa o total da prova (${fmtPoints(totalScore)})`,
+      );
+    }
+  }
+
   private assertPublishable(
     questionsCount: number,
     classesCount: number,
     endsAt: Date,
+    pointsSum: number,
+    totalScore: number,
   ) {
     if (questionsCount < 1) {
       throw new BadRequestException(
@@ -242,6 +270,11 @@ export class ExamsService {
     if (endsAt.getTime() <= Date.now()) {
       throw new BadRequestException(
         'A data final da prova já passou. Ajuste o período para publicar',
+      );
+    }
+    if (round2(pointsSum) !== round2(totalScore)) {
+      throw new BadRequestException(
+        `A soma dos pontos das questões (${fmtPoints(pointsSum)}) precisa ser igual ao total da prova (${fmtPoints(totalScore)}) para publicar`,
       );
     }
   }
@@ -259,12 +292,20 @@ export class ExamsService {
   async createExam(req: AuthenticatedRequest, dto: SaveExamDto) {
     const user = req.user;
     const { startsAt, endsAt } = this.parseSchedule(dto);
+    const totalScore = dto.totalScore ?? EXAM_TOTAL_SCORE;
 
     await this.assertQuestionsAreFromTeacher(user.id, dto.questions);
     await this.assertClassesAreFromTeacher(user.id, dto.classIds);
+    this.assertPointsWithinTotal(dto.questions, totalScore);
 
     if (dto.publish) {
-      this.assertPublishable(dto.questions.length, dto.classIds.length, endsAt);
+      this.assertPublishable(
+        dto.questions.length,
+        dto.classIds.length,
+        endsAt,
+        sumQuestionPoints(dto.questions),
+        totalScore,
+      );
     }
 
     const exam = await this.prisma.exam.create({
@@ -273,7 +314,7 @@ export class ExamsService {
         startsAt,
         endsAt,
         durationMinutes: dto.durationMinutes,
-        targetScore: EXAM_TOTAL_SCORE,
+        targetScore: totalScore,
         status: dto.publish ? ExamStatus.PUBLISHED : ExamStatus.DRAFT,
         userId: user.id,
         examQuestions: {
@@ -331,11 +372,21 @@ export class ExamsService {
     }
 
     const { startsAt, endsAt } = this.parseSchedule(dto);
+    // se o front não mandar o total, mantém o que já estava gravado
+    const totalScore = dto.totalScore ?? existing.targetScore;
+
     await this.assertQuestionsAreFromTeacher(user.id, dto.questions);
     await this.assertClassesAreFromTeacher(user.id, dto.classIds);
+    this.assertPointsWithinTotal(dto.questions, totalScore);
 
     if (dto.publish) {
-      this.assertPublishable(dto.questions.length, dto.classIds.length, endsAt);
+      this.assertPublishable(
+        dto.questions.length,
+        dto.classIds.length,
+        endsAt,
+        sumQuestionPoints(dto.questions),
+        totalScore,
+      );
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {
@@ -349,6 +400,7 @@ export class ExamsService {
           startsAt,
           endsAt,
           durationMinutes: dto.durationMinutes,
+          targetScore: totalScore,
           status: dto.publish ? ExamStatus.PUBLISHED : ExamStatus.DRAFT,
           examQuestions: {
             create: dto.questions.map((q, index) => ({
@@ -378,7 +430,7 @@ export class ExamsService {
     const exam = await this.prisma.exam.findFirst({
       where: { id, userId: user.id },
       include: {
-        examQuestions: { select: { id: true } },
+        examQuestions: { select: { id: true, points: true } },
         assignments: { select: { id: true } },
       },
     });
@@ -393,6 +445,8 @@ export class ExamsService {
       exam.examQuestions.length,
       exam.assignments.length,
       exam.endsAt,
+      sumQuestionPoints(exam.examQuestions),
+      exam.targetScore,
     );
 
     const published = await this.prisma.exam.update({

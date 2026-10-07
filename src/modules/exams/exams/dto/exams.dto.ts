@@ -46,6 +46,13 @@ export class SaveExamDto {
   @Min(1)
   durationMinutes!: number;
 
+  // Total de pontos da prova, escolhido pelo professor. Omitido = 10.
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsPositive()
+  @Max(1000)
+  totalScore?: number;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ExamQuestionInputDto)
