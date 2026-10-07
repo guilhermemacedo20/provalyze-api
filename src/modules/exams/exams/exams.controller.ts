@@ -22,6 +22,11 @@ import { RolesGuard } from 'src/common/guards/role.guard';
 export class ExamsController {
   constructor(private readonly examsService: ExamsService) {}
 
+  @Get(':answerId/aiValidateQuestion')
+  aiValidateQuestion(@Req() req: any, @Param('answerId') answerId: string) {
+    return this.examsService.aiValidateQuestion(req, answerId);
+  }
+
   @Post()
   createExam(
     @Req() req: AuthenticatedRequest,

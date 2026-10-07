@@ -9,7 +9,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ClassesService } from './classes.service';
-import { CreateClassDto, AddStudentDto } from './dto/classes.dto';
+import { CreateClassDto, AddStudentDto, JoinClassDto } from './dto/classes.dto';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt.guard';
 import { RolesGuard } from 'src/common/guards/role.guard';
@@ -28,6 +28,18 @@ export class ClassesController {
   @Get()
   listClasses(@Req() req: any) {
     return this.classesService.listClasses(req);
+  }
+
+  @Roles('STUDENT')
+  @Get('student-classes')
+  getStudentClass(@Req() req: any) {
+    return this.classesService.listStudentClasses(req);
+  }
+
+  @Roles('STUDENT')
+  @Post('join')
+  joinClass(@Req() req: any, @Body() joinClassDto: JoinClassDto) {
+    return this.classesService.joinClass(req, joinClassDto.code);
   }
 
   @Get(':id')

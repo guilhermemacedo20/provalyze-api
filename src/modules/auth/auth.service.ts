@@ -205,7 +205,7 @@ export class AuthService {
       throw new ConflictException('Usuário já possui conta cadastrada');
     }
 
-    if (data.role !== Role.STUDENT && data.role !== Role.TEACHER) {
+    if (data.role !== Role.STUDENT) {
       throw new BadRequestException('Perfil de acesso não permitido');
     }
 

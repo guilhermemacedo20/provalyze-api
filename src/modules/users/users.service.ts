@@ -19,10 +19,16 @@ export class UsersService {
   async listUsers(req: any) {
     const user = req.user;
     const isTeacher = user.role === Role.TEACHER;
+    const isCoordinator = user.role === Role.COORDINATOR;
     const users = await this.prisma.user.findMany({
       where: isTeacher
-        ? { role: 'STUDENT', anonymizedAt: null }
-        : { anonymizedAt: null },
+        ? { role: Role.STUDENT, anonymizedAt: null }
+        : isCoordinator
+          ? {
+              role: { in: [Role.TEACHER, Role.STUDENT] },
+              anonymizedAt: null,
+            }
+          : { anonymizedAt: null },
       orderBy: { name: 'asc' },
       include: {
         teacherAssignments: {
@@ -55,7 +61,8 @@ export class UsersService {
     });
   }
 
-  async createUserFromAdmin(createUserDto: CreateUserDto) {
+  async createUserFromAdmin(req: any, createUserDto: CreateUserDto) {
+    const actualUser = req.user;
     const hasUser = await this.prisma.user.findUnique({
       where: { email: createUserDto.email },
     });
@@ -65,7 +72,15 @@ export class UsersService {
         'Já existe um usuário cadastrado com esse e-mail.',
       );
     }
-
+    if (
+      actualUser.role === Role.COORDINATOR &&
+      createUserDto.role !== Role.TEACHER &&
+      createUserDto.role !== Role.STUDENT
+    ) {
+      throw new BadRequestException(
+        'Usuário pode criar apenas professor ou aluno',
+      );
+    }
     const user = await this.prisma.user.create({
       data: createUserDto,
     });
@@ -83,10 +98,24 @@ export class UsersService {
     return user;
   }
 
-  async updateUser(id: string, updateUserDto: UpdateUserDto) {
+  async updateUser(req: any, id: string, updateUserDto: UpdateUserDto) {
+    const user = req.user;
     const existing = await this.prisma.user.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException('Usuário não encontrado');
+    }
+
+    if (user.role === Role.COORDINATOR) {
+      if (
+        existing.role === Role.COORDINATOR ||
+        existing.role === Role.ADMIN ||
+        updateUserDto.role === Role.COORDINATOR ||
+        updateUserDto.role === Role.ADMIN
+      ) {
+        throw new BadRequestException(
+          'Usuário pode alterar apenas professor ou aluno',
+        );
+      }
     }
 
     try {

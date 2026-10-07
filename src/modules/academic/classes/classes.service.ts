@@ -116,6 +116,73 @@ export class ClassesService {
     }));
   }
 
+  async listStudentClasses(req: any) {
+    const user = req.user;
+    const isStudent = user.role === Role.STUDENT;
+
+    if (!isStudent) {
+      throw new BadRequestException('Usuário não possui sala cadastrada');
+    }
+
+    const classes = await this.prisma.class.findMany({
+      where: {
+        studentAssignments: {
+          some: { userId: user.id, endedAt: null },
+        },
+      },
+      include: {
+        subject: { include: { course: { select: { name: true } } } },
+        teacherAssignments: {
+          where: { endedAt: null },
+          include: { teacher: { select: { name: true } } },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return classes.map((schoolClass) => ({
+      id: schoolClass.id,
+      name: schoolClass.name,
+      teacherName: schoolClass.teacherAssignments[0]?.teacher.name ?? '—',
+      subjectName: schoolClass.subject.name,
+      courseName: schoolClass.subject.course.name,
+      averageScore: null, // ainda não existe módulo de provas/notas no sistema
+    }));
+  }
+
+  async joinClass(req: any, code: string) {
+    const user = req.user;
+    const joinCode = code.trim().toLowerCase();
+
+    if (!joinCode) {
+      throw new BadRequestException('Informe o código da sala');
+    }
+
+    const schoolClass = await this.prisma.class.findUnique({
+      where: { joinCode },
+    });
+    if (!schoolClass) {
+      throw new NotFoundException('Código de sala inválido');
+    }
+
+    const existing = await this.prisma.studentAssignment.findFirst({
+      where: { classId: schoolClass.id, userId: user.id, endedAt: null },
+    });
+    
+    if (existing) {
+      throw new BadRequestException('Você já está nessa sala');
+    }
+
+    await this.logs.audit(
+      `Student joined class ${schoolClass.id}`,
+      user.id,
+    );
+
+    return this.prisma.studentAssignment.create({
+      data: { classId: schoolClass.id, userId: user.id },
+    });
+  }
+
   async getClass(req: any, id: string) {
     await this.assertTeacherOwnClass(req.user, id);
 
