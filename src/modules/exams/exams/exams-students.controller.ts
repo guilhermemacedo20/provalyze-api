@@ -25,7 +25,7 @@ export class ExamsStudentsController {
     @Param('classId') classId: string,
     @Param('examId') examId: string,
   ) {
-    return this.examsService.getExam(req, classId, examId);
+    return this.examsService.getStudentExam(req, classId, examId);
   }
 
   @Get(':classId')

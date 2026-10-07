@@ -219,6 +219,7 @@ model ExamQuestion {
   examId     String
   questionId String
   points     Float
+  order      Int      @default(0)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @default(now()) @updatedAt
 
@@ -228,6 +229,7 @@ model ExamQuestion {
   events   ExamEvent[]
 
   @@unique([examId, questionId])
+  @@index([examId, order])
 }
 
 model ExamAssignment {
