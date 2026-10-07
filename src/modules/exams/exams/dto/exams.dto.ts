@@ -1,6 +1,8 @@
+import { ExamEventType } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsEnum,
   IsOptional,
   IsString,
   ValidateNested,
@@ -24,4 +26,18 @@ export class SubmitExamDto {
   @ValidateNested({ each: true })
   @Type(() => SubmitExamAnswerDto)
   answers!: SubmitExamAnswerDto[];
+}
+
+export class EventDto {
+  @IsEnum(ExamEventType)
+  type!: ExamEventType;
+
+  @IsString()
+  examQuestionId!: string;
+}
+
+export class SubmitExamEventDto {
+  @ValidateNested()
+  @Type(() => EventDto)
+  event!: EventDto;
 }

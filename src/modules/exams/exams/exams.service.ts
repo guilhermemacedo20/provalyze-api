@@ -15,7 +15,7 @@ import {
 } from '@prisma/client';
 import { LogsService } from 'src/infra/logs/logs.service';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
-import { SubmitExamDto } from './dto/exams.dto';
+import { SubmitExamDto, SubmitExamEventDto } from './dto/exams.dto';
 
 const examQuestionsInclude = {
   question: {
@@ -97,7 +97,9 @@ export class ExamsService {
     await this.assertStudentInClass(userId, classId);
     const exam = await this.findAssignedExam(classId, examId);
 
-    let session = await this.findSession(examId, userId);
+    let session = await this.prisma.examSession.findFirst({
+      where: { examId, userId },
+    });
 
     if (session?.status === SessionStatus.FINISHED) {
       return this.finishedExam(exam, session);
@@ -112,11 +114,33 @@ export class ExamsService {
       return this.blocked(exam, 'Tempo da prova esgotado');
     }
 
-    session = await this.ensureStartedSession(exam, userId, session);
+    if (!session) {
+      session = await this.prisma.examSession.create({
+        data: {
+          examId: exam.id,
+          userId,
+          status: SessionStatus.STARTED,
+          startedAt: new Date(),
+        },
+      });
+      await this.logs.audit(`Iniciou a prova ${exam.title}`, userId);
+    }
+
+    if (!session.startedAt) {
+      session = await this.prisma.examSession.update({
+        where: { id: session.id },
+        data: { status: SessionStatus.STARTED, startedAt: new Date() },
+      });
+    }
+
     const expiresAt = this.expiresAt(exam, session.startedAt as Date);
 
     if (session.startedAt && new Date() > expiresAt) {
-      await this.markExpired(session.id);
+      await this.prisma.examSession.update({
+        where: { id: session.id },
+        data: { status: SessionStatus.EXPIRED },
+      });
+
       return this.blocked(exam, 'Tempo da prova esgotado');
     }
 
@@ -137,7 +161,22 @@ export class ExamsService {
       targetScore: exam.targetScore,
       durationMinutes: exam.durationMinutes,
       status: exam.status,
-      questions: this.presentQuestions(examQuestions),
+      questions: this.shuffle(examQuestions).map((examQuestion) => ({
+        id: examQuestion.id,
+        questionId: examQuestion.questionId,
+        points: examQuestion.points,
+        statement: examQuestion.question.statement,
+        type: examQuestion.question.type,
+        themeName: examQuestion.question.theme.name,
+        imageUrl: examQuestion.question.imageUrl,
+        options: this.shuffle(examQuestion.question.questionOptions).map(
+          (option) => ({
+            id: option.id,
+            label: option.label,
+            text: option.text,
+          }),
+        ),
+      })),
     };
   }
 
@@ -156,7 +195,9 @@ export class ExamsService {
       return closed;
     }
 
-    const session = await this.findSession(examId, userId);
+    const session = await this.prisma.examSession.findFirst({
+      where: { examId, userId },
+    });
 
     if (!session || session.status !== SessionStatus.STARTED) {
       return this.blocked(exam, this.inactiveSessionMessage(session));
@@ -165,7 +206,11 @@ export class ExamsService {
     const expiresAt = this.expiresAt(exam, session.startedAt as Date);
 
     if (session.startedAt && new Date() > expiresAt) {
-      await this.markExpired(session.id);
+      await this.prisma.examSession.update({
+        where: { id: session.id },
+        data: { status: SessionStatus.EXPIRED },
+      });
+
       return this.blocked(exam, 'Prova expirada');
     }
 
@@ -220,6 +265,66 @@ export class ExamsService {
     };
   }
 
+  async submitExamEvents(
+    req: any,
+    classId: string,
+    examId: string,
+    body: SubmitExamEventDto,
+  ) {
+    const userId = req.user.id;
+    await this.assertStudentInClass(userId, classId);
+    await this.findAssignedExam(classId, examId);
+
+    const session = await this.prisma.examSession.findFirst({
+      where: { examId, userId },
+    });
+
+    if (!session || session.status !== SessionStatus.STARTED) {
+      throw new BadRequestException('A prova não está em andamento');
+    }
+
+    const examQuestion = await this.prisma.examQuestion.findFirst({
+      where: { id: body.event.examQuestionId, examId },
+      select: { id: true, questionId: true },
+    });
+
+    if (!examQuestion) {
+      throw new BadRequestException('Questão não encontrada nessa prova');
+    }
+
+    const hasEvent = await this.prisma.examEvent.findFirst({
+      where: {
+        sessionId: session.id,
+        examQuestionId: examQuestion.id,
+        type: body.event.type,
+      },
+    });
+
+    if (hasEvent) {
+      return {
+        message: 'Evento já registrado para essa questão',
+        event: hasEvent.type,
+        examQuestionId: hasEvent.examQuestionId,
+      };
+    }
+
+    const event = await this.prisma.examEvent.create({
+      data: {
+        sessionId: session.id,
+        examQuestionId: examQuestion.id,
+        type: body.event.type,
+      },
+    });
+    this.logs.audit(
+      `Registrou evento ${event.type} na questão ${examQuestion.questionId}`,
+      userId,
+    );
+    return {
+      id: event.id,
+      type: event.type,
+    };
+  }
+
   private async assertStudentInClass(userId: string, classId: string) {
     const schoolClass = await this.prisma.class.findFirst({
       where: {
@@ -247,47 +352,6 @@ export class ExamsService {
     }
 
     return assignment.exam;
-  }
-
-  private findSession(examId: string, userId: string) {
-    return this.prisma.examSession.findFirst({
-      where: { examId, userId },
-    });
-  }
-
-  private async ensureStartedSession(
-    exam: Exam,
-    userId: string,
-    session: ExamSession | null,
-  ) {
-    if (!session) {
-      const created = await this.prisma.examSession.create({
-        data: {
-          examId: exam.id,
-          userId,
-          status: SessionStatus.STARTED,
-          startedAt: new Date(),
-        },
-      });
-      await this.logs.audit(`Iniciou a prova ${exam.title}`, userId);
-      return created;
-    }
-
-    if (!session.startedAt) {
-      return this.prisma.examSession.update({
-        where: { id: session.id },
-        data: { status: SessionStatus.STARTED, startedAt: new Date() },
-      });
-    }
-
-    return session;
-  }
-
-  private markExpired(sessionId: string) {
-    return this.prisma.examSession.update({
-      where: { id: sessionId },
-      data: { status: SessionStatus.EXPIRED },
-    });
   }
 
   private toStudentExam(
@@ -359,11 +423,11 @@ export class ExamsService {
     return examQuestions.map((examQuestion) => {
       const answer = submitted.get(examQuestion.id);
       const question = examQuestion.question;
-      const weightedPoints = this.weightedScore(
-        examQuestion.points,
-        totalPoints,
-        exam.targetScore,
-      );
+
+      const weightedPoints =
+        Math.round(
+          (examQuestion.points / (totalPoints || 0)) * exam.targetScore * 100,
+        ) / 100;
 
       if (question.type !== QuestionType.MULTIPLE_CHOICE) {
         return {
@@ -403,24 +467,6 @@ export class ExamsService {
         themeName: question.theme.name,
       };
     });
-  }
-
-  private presentQuestions(examQuestions: ExamQuestionWithOptions[]) {
-    return this.shuffle(examQuestions).map((examQuestion) => ({
-      id: examQuestion.id,
-      points: examQuestion.points,
-      statement: examQuestion.question.statement,
-      type: examQuestion.question.type,
-      themeName: examQuestion.question.theme.name,
-      imageUrl: examQuestion.question.imageUrl,
-      options: this.shuffle(examQuestion.question.questionOptions).map(
-        (option) => ({
-          id: option.id,
-          label: option.label,
-          text: option.text,
-        }),
-      ),
-    }));
   }
 
   private async finishedExam(exam: Exam, session: ExamSession) {
@@ -491,18 +537,6 @@ export class ExamsService {
       session.startedAt &&
       now > this.expiresAt(exam, session.startedAt),
     );
-  }
-
-  private weightedScore(
-    points: number,
-    totalPoints: number,
-    targetScore: number,
-  ) {
-    if (totalPoints <= 0) {
-      return 0;
-    }
-
-    return Math.round((points / totalPoints) * targetScore * 100) / 100;
   }
 
   private shuffle<T>(items: T[]): T[] {

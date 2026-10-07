@@ -33,6 +33,15 @@ enum GradeStatus {
   TEACHER_APPROVED
 }
 
+enum ExamEventType {
+  PASTE
+  COPY
+  CUT
+  TAB_SWITCH
+  WINDOW_BLUR
+  CONTEXT_MENU
+}
+
 model User {
   id        String   @id @default(cuid())
   name      String
@@ -213,9 +222,10 @@ model ExamQuestion {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @default(now()) @updatedAt
 
-  exam     Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
-  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  exam     Exam        @relation(fields: [examId], references: [id], onDelete: Cascade)
+  question Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
   answers  Answer[]
+  events   ExamEvent[]
 
   @@unique([examId, questionId])
 }
@@ -274,12 +284,15 @@ model Answer {
 }
 
 model ExamEvent {
-  id        String   @id @default(cuid())
-  sessionId String
-  type      String
-  createdAt DateTime @default(now())
+  id             String        @id @default(cuid())
+  sessionId      String
+  examQuestionId String
+  type           ExamEventType
+  createdAt      DateTime      @default(now())
 
-  session ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session      ExamSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  examQuestion ExamQuestion @relation(fields: [examQuestionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, createdAt])
+  @@index([examQuestionId])
 }
