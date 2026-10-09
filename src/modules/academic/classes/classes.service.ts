@@ -208,7 +208,7 @@ export class ClassesService {
       id: schoolClass.id,
       name: schoolClass.name,
       joinCode: schoolClass.joinCode,
-      teacherName: schoolClass.teacherAssignments[0]?.teacher.name ?? '-',
+      teacherName: schoolClass.teacherAssignments[0]?.teacher.name,
       subjectName: schoolClass.subject.name,
       courseName: schoolClass.subject.course.name,
       students: schoolClass.studentAssignments.map((a) => ({
