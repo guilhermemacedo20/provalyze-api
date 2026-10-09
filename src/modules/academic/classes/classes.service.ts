@@ -108,7 +108,7 @@ export class ClassesService {
       id: schoolClass.id,
       name: schoolClass.name,
       joinCode: schoolClass.joinCode,
-      teacherName: schoolClass.teacherAssignments[0]?.teacher.name ?? '—',
+      teacherName: schoolClass.teacherAssignments[0]?.teacher.name,
       subjectName: schoolClass.subject.name,
       courseName: schoolClass.subject.course.name,
       studentsCount: schoolClass.studentAssignments.length,
@@ -143,7 +143,7 @@ export class ClassesService {
     return classes.map((schoolClass) => ({
       id: schoolClass.id,
       name: schoolClass.name,
-      teacherName: schoolClass.teacherAssignments[0]?.teacher.name ?? '—',
+      teacherName: schoolClass.teacherAssignments[0]?.teacher.name,
       subjectName: schoolClass.subject.name,
       courseName: schoolClass.subject.course.name,
       averageScore: null, // ainda não existe módulo de provas/notas no sistema
@@ -168,15 +168,12 @@ export class ClassesService {
     const existing = await this.prisma.studentAssignment.findFirst({
       where: { classId: schoolClass.id, userId: user.id, endedAt: null },
     });
-    
+
     if (existing) {
       throw new BadRequestException('Você já está nessa sala');
     }
 
-    await this.logs.audit(
-      `Student joined class ${schoolClass.id}`,
-      user.id,
-    );
+    await this.logs.audit(`Student joined class ${schoolClass.id}`, user.id);
 
     return this.prisma.studentAssignment.create({
       data: { classId: schoolClass.id, userId: user.id },
@@ -211,7 +208,7 @@ export class ClassesService {
       id: schoolClass.id,
       name: schoolClass.name,
       joinCode: schoolClass.joinCode,
-      teacherName: schoolClass.teacherAssignments[0]?.teacher.name ?? '—',
+      teacherName: schoolClass.teacherAssignments[0]?.teacher.name ?? '-',
       subjectName: schoolClass.subject.name,
       courseName: schoolClass.subject.course.name,
       students: schoolClass.studentAssignments.map((a) => ({
