@@ -1,7 +1,8 @@
-import { Controller, Get, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Req, UseGuards } from '@nestjs/common';
 import { ReportService } from './report.service';
 import { RolesGuard } from 'src/common/guards/role.guard';
 import { JwtAuthGuard } from 'src/common/guards/jwt.guard';
+import { Roles } from 'src/common/decorators/roles.decorator';
 
 @Controller('report')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -11,5 +12,31 @@ export class ReportController {
   @Get('/dashboard-information')
   dashInformation(@Req() req: any) {
     return this.reportService.dashInformation(req);
+  }
+
+  @Get(':classId/analytics')
+  @Roles('TEACHER')
+  classAnalytics(@Req() req: any, @Param('classId') classId: string) {
+    return this.reportService.classAnalytics(req, classId);
+  }
+
+  @Get(':classId/analytics/:studentId/ai')
+  @Roles('TEACHER', 'STUDENT')
+  studentThemeAnalysis(
+    @Req() req: any,
+    @Param('classId') classId: string,
+    @Param('studentId') studentId: string,
+  ) {
+    return this.reportService.studentThemeAnalysis(req, classId, studentId);
+  }
+
+  @Get(':classId/analytics/:studentId')
+  @Roles('TEACHER', 'STUDENT')
+  studentAnalytics(
+    @Req() req: any,
+    @Param('classId') classId: string,
+    @Param('studentId') studentId: string,
+  ) {
+    return this.reportService.studentAnalytics(req, classId, studentId);
   }
 }

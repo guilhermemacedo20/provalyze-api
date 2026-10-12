@@ -1,5 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ExamStatus, GradeStatus, Role, SessionStatus } from '@prisma/client';
+import { AIService } from 'src/infra/ai/ai.service';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 
 function roundScore(value: number | null) {
@@ -17,7 +23,10 @@ const fullyGradedSession = {
 
 @Injectable()
 export class ReportService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly aiService: AIService,
+  ) {}
 
   async dashInformation(req: any) {
     const user = req.user;
@@ -35,6 +44,144 @@ export class ReportService {
     }
 
     throw new NotFoundException('Dashboard information not found');
+  }
+
+  async classAnalytics(req: any, classId: string) {
+    const user = req.user;
+    return;
+  }
+
+  async studentAnalytics(req: any, classId: string, studentId: string) {
+    const user = req.user;
+    if (user.role === Role.STUDENT && user.id !== studentId) {
+      throw new UnauthorizedException(
+        'Usuário não possui permissão para visualizar esse analytics',
+      );
+    }
+
+    const schoolClass = await this.prisma.class.findFirst({
+      where: {
+        id: classId,
+        studentAssignments: {
+          some: { userId: studentId, endedAt: null },
+        },
+        ...(user.role === Role.TEACHER
+          ? {
+              teacherAssignments: {
+                some: { userId: user.id, endedAt: null },
+              },
+            }
+          : {}),
+      },
+      select: {
+        name: true,
+        subject: { select: { name: true } },
+        studentAssignments: {
+          where: { userId: studentId, endedAt: null },
+          select: { student: { select: { name: true, email: true } } },
+        },
+      },
+    });
+
+    if (!schoolClass || !schoolClass.studentAssignments[0]) {
+      throw new UnauthorizedException(
+        'Usuário não possui permissão para esse acesso',
+      );
+    }
+
+    const inClass = {
+      userId: studentId,
+      exam: { assignments: { some: { classId } } },
+    };
+    const student = schoolClass.studentAssignments[0].student;
+
+    const [averageResult, exams, answers] = await Promise.all([
+      this.prisma.examSession.aggregate({
+        where: { ...inClass, ...fullyGradedSession },
+        _avg: { score: true },
+      }),
+      this.prisma.examSession.findMany({
+        where: { ...inClass, status: SessionStatus.FINISHED },
+        select: {
+          score: true,
+          finishedAt: true,
+          exam: { select: { title: true } },
+        },
+      }),
+      this.prisma.answer.findMany({
+        where: {
+          gradeStatus: {
+            in: [GradeStatus.AUTO, GradeStatus.TEACHER_APPROVED],
+          },
+          session: { ...inClass, status: SessionStatus.FINISHED },
+        },
+        select: {
+          score: true,
+          examQuestion: {
+            select: {
+              points: true,
+              question: { select: { theme: { select: { name: true } } } },
+            },
+          },
+        },
+      }),
+    ]);
+
+    const totals = new Map<string, { score: number; points: number }>();
+    for (const answer of answers) {
+      const name = answer.examQuestion.question.theme.name;
+      const current = totals.get(name) ?? { score: 0, points: 0 };
+      current.score += answer.score;
+      current.points += answer.examQuestion.points;
+      totals.set(name, current);
+    }
+
+    const themes = [...totals.entries()]
+      .map(([name, total]) => ({
+        name,
+        percent:
+          total.points > 0 ? Math.round((total.score / total.points) * 100) : 0,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+
+    return {
+      studentName: student.name,
+      className: schoolClass.name,
+      subjectName: schoolClass.subject.name,
+      totalAverage: roundScore(averageResult._avg.score),
+      finishedExams: exams.length,
+      themes,
+      exams: exams.map((session) => ({
+        title: session.exam.title,
+        subjectName: schoolClass.subject.name,
+        finishedAt: session.finishedAt,
+        score: session.score,
+      })),
+    };
+  }
+
+  async studentThemeAnalysis(req: any, classId: string, studentId: string) {
+    const report = await this.studentAnalytics(req, classId, studentId);
+
+    if (report.themes.length === 0) {
+      throw new BadRequestException(
+        'Não há resultado por tema para analisar esse aluno',
+      );
+    }
+
+    const analysis = await this.aiService.analyzeStudentThemes({
+      subjectName: report.subjectName,
+      themes: report.themes,
+      exams: report.exams,
+    });
+
+    if (!analysis) {
+      throw new BadRequestException(
+        'Não foi possível analisar o desempenho desse aluno',
+      );
+    }
+
+    return analysis;
   }
 
   private async adminDashboard() {
@@ -130,7 +277,7 @@ export class ReportService {
         _avg: { score: true },
       }),
     ]);
-    
+
     return {
       role: Role.STUDENT,
       upcomingExams,

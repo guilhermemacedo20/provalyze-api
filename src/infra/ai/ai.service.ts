@@ -14,6 +14,23 @@ Use apenas os dados recebidos. Devolva apenas JSON com:
 O primeiro diz como o aluno foi em relação à nota alvo.
 O segundo aponta os temas com mais dificuldade e o que vale revisar, em tom de orientação.`;
 
+const ANALYSE_STUDENT_THEMES_PROMPT = `Escreva a análise pedagógica de um aluno.
+Use apenas o desempenho por tema e as provas recebidas. Devolva apenas JSON com:
+- difficulty: um parágrafo curto em português descrevendo as dificuldades a partir dos temas com menor porcentagem
+- recommendation: um parágrafo curto em português com uma recomendação pedagógica objetiva
+Não invente tema, nota ou prova que não esteja nos dados.`;
+
+export type StudentThemeAnalysis = {
+  subjectName: string;
+  themes: { name: string; percent: number }[];
+  exams: {
+    title: string;
+    subjectName: string;
+    finishedAt: Date | null;
+    score: number | null;
+  }[];
+};
+
 export type AnswerToScore = {
   content: string;
   sessionId: string;
@@ -138,6 +155,30 @@ export class AIService {
     }
 
     return { analysis: result.analysis.trim() };
+  }
+
+  async analyzeStudentThemes(input: StudentThemeAnalysis) {
+    const result = await this.sendPrompt<{
+      difficulty: string;
+      recommendation: string;
+    }>(
+      ANALYSE_STUDENT_THEMES_PROMPT,
+      JSON.stringify({
+        subjectName: input.subjectName,
+        themes: input.themes,
+        exams: input.exams,
+      }),
+      512,
+    );
+
+    const difficulty = result?.difficulty?.trim();
+    const recommendation = result?.recommendation?.trim();
+
+    if (!difficulty || !recommendation) {
+      return null;
+    }
+
+    return { difficulty, recommendation };
   }
 
   private async sendPrompt<T>(
