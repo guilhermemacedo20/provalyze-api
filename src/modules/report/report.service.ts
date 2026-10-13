@@ -13,6 +13,19 @@ function roundScore(value: number | null) {
   return Math.round(value * 100) / 100;
 }
 
+function median(values: number[]) {
+  if (values.length === 0) {
+    return null;
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  const value =
+    sorted.length % 2 === 0
+      ? (sorted[middle - 1] + sorted[middle]) / 2
+      : sorted[middle];
+  return Math.round(value * 10) / 10;
+}
+
 const fullyGradedSession = {
   status: SessionStatus.FINISHED,
   answers: {
@@ -46,9 +59,128 @@ export class ReportService {
     throw new NotFoundException('Dashboard information not found');
   }
 
-  async classAnalytics(req: any, classId: string) {
+  async classAnalytics(req: any, classId?: string, examId?: string) {
     const user = req.user;
-    return;
+
+    const classes = await this.prisma.class.findMany({
+      where:
+        user.role === Role.TEACHER
+          ? {
+              teacherAssignments: {
+                some: { userId: user.id, endedAt: null },
+              },
+            }
+          : {},
+      select: {
+        id: true,
+        name: true,
+        subject: { select: { name: true } },
+      },
+    });
+
+    if (classId && !classes.find((schoolClass) => schoolClass.id === classId)) {
+      throw new UnauthorizedException(
+        'Usuário não possui permissão para visualizar esse analytics',
+      );
+    }
+
+    const classIds = classes.map((schoolClass) => schoolClass.id);
+    const exams =
+      classIds.length > 0
+        ? await this.prisma.exam.findMany({
+            where: {
+              status: { in: [ExamStatus.PUBLISHED, ExamStatus.ENDED] },
+              ...(user.role === Role.TEACHER ? { userId: user.id } : {}),
+              assignments: {
+                some: { classId: classId || { in: classIds } },
+              },
+            },
+            select: { id: true, title: true, targetScore: true },
+          })
+        : [];
+
+    if (examId && !exams.some((exam) => exam.id === examId)) {
+      throw new UnauthorizedException(
+        'Usuário não possui permissão para visualizar esse analytics',
+      );
+    }
+
+    const examIds = examId ? [examId] : exams.map((exam) => exam.id);
+    const sessions =
+      examIds.length > 0
+        ? await this.prisma.examSession.findMany({
+            where: {
+              ...fullyGradedSession,
+              exam: {
+                id: { in: examIds },
+                assignments: {
+                  some: { classId: classId ?? { in: classIds } },
+                },
+              },
+            },
+            select: { id: true, score: true },
+          })
+        : [];
+
+    const answers =
+      sessions.length > 0
+        ? await this.prisma.answer.findMany({
+            where: { sessionId: { in: sessions.map((session) => session.id) } },
+            select: {
+              isCorrect: true,
+              score: true,
+              examQuestion: {
+                select: {
+                  points: true,
+                  question: { select: { theme: { select: { name: true } } } },
+                },
+              },
+            },
+          })
+        : [];
+
+    const scores = sessions
+      .map((session) => session.score)
+      .filter((score): score is number => score != null);
+
+    const correct = answers.filter((answer) => answer.isCorrect).length;
+    const totals = new Map<string, { score: number; points: number }>();
+
+    for (const answer of answers) {
+      const name = answer.examQuestion.question.theme.name;
+      const current = totals.get(name) ?? { score: 0, points: 0 };
+      current.score += answer.score;
+      current.points += answer.examQuestion.points;
+      totals.set(name, current);
+    }
+
+    const themes = [...totals.entries()]
+      .map(([name, total]) => ({
+        name,
+        percent:
+          total.points > 0 ? Math.round((total.score / total.points) * 100) : 0,
+      }))
+      .sort(
+        (a, b) =>
+          b.percent - a.percent || a.name.localeCompare(b.name, 'pt-BR'),
+      );
+    const scoreResult =
+      scores.reduce((total, score) => total + score, 0) / scores.length || 0;
+
+    return {
+      average: scores.length ? Math.round(scoreResult * 10) / 10 : null,
+      median: median(scores),
+      hitRate: answers.length
+        ? Math.round((correct / answers.length) * 100)
+        : null,
+      themes,
+      classes: classes.map((schoolClass) => ({
+        id: schoolClass.id,
+        name: schoolClass.name,
+        subjectName: schoolClass.subject.name,
+      })),
+      exams,
+    };
   }
 
   async studentAnalytics(req: any, classId: string, studentId: string) {
