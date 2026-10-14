@@ -16,9 +16,39 @@ O segundo aponta os temas com mais dificuldade e o que vale revisar, em tom de o
 
 const ANALYSE_STUDENT_THEMES_PROMPT = `Escreva a análise pedagógica de um aluno.
 Use apenas o desempenho por tema e as provas recebidas. Devolva apenas JSON com:
-- difficulty: um parágrafo curto em português descrevendo as dificuldades a partir dos temas com menor porcentagem
-- recommendation: um parágrafo curto em português com uma recomendação pedagógica objetiva
+- difficulty: um parágrafo curto em português descrevendo as dificuldades a partir dos temas com menor porcentagem e orientando o que seria bom para o aluno estudar
+- recommendation: um parágrafo curto em português com uma recomendação pedagógica objetiva com orientação de qual foco o aluno deve seguir
 Não invente tema, nota ou prova que não esteja nos dados.`;
+
+const ANALYSE_CLASS_THEMES_PROMPT = `Identifique lacunas pedagógicas da turma.
+Compare cada resposta com o enunciado da questão. Use apenas os dados recebidos, não invente dados.
+Devolva apenas JSON neste formato:
+{"gaps":[{"theme":"nome do tema","evidence":"parágrafo curto","suggestion":"parágrafo curto"}]}
+Onde:
+- evidence: o que as respostas mostram em relação ao enunciado, sem inventar fala do aluno
+- suggestion: o que vale revisar com a turma e ensinar aos alunos.
+Inclua só temas em que as respostas indicam dificuldade. Se não houver lacuna, devolva {"gaps":[]}, porém se não tiver uma sugestão ao tema retorne apenas o tema
+e na evidência identifique o que os alunos estão fazendo corretamente.`;
+
+export type ClassGapQuestion = {
+  examTitle: string;
+  statement: string;
+  points: number;
+  targetScore: number;
+  correctCount: number;
+  answerCount: number;
+  answers: { content: string; isCorrect: boolean; score: number }[];
+};
+
+export type ClassGapInput = {
+  themes: { name: string; questions: ClassGapQuestion[] }[];
+};
+
+export type ClassGap = {
+  theme: string;
+  evidence: string;
+  suggestion: string;
+};
 
 export type StudentThemeAnalysis = {
   subjectName: string;
@@ -179,6 +209,28 @@ export class AIService {
     }
 
     return { difficulty, recommendation };
+  }
+
+  async analyseClassTheme(input: ClassGapInput) {
+    
+    const result = await this.sendPrompt<{ gaps: ClassGap[] }>(
+      ANALYSE_CLASS_THEMES_PROMPT,
+      JSON.stringify({ themes: input.themes }),
+      512,
+    );
+
+    const gaps = result?.gaps;
+    if (!Array.isArray(gaps)) {
+      return null;
+    }
+
+    return gaps.flatMap((gap) => {
+      const theme = gap.theme?.trim();
+      const evidence = gap.evidence?.trim();
+      const suggestion = gap.suggestion?.trim();
+
+      return [{ theme, evidence, suggestion }];
+    });
   }
 
   private async sendPrompt<T>(

@@ -24,6 +24,12 @@ export class ReportController {
     return this.reportService.classAnalytics(req, classId, examId);
   }
 
+  @Get('/gaps')
+  @Roles('TEACHER')
+  gapAnalytics(@Req() req: any, @Query('classId') classId?: string) {
+    return this.reportService.gapAnalytics(req, classId);
+  }
+
   @Get(':classId/analytics/:studentId/ai')
   @Roles('TEACHER', 'STUDENT')
   studentThemeAnalysis(
