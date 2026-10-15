@@ -23,6 +23,7 @@ import {
   SaveExamDto,
   SubmitExamDto,
   SubmitExamEventDto,
+  GradeAnswerDto,
 } from './dto/exams.dto';
 
 const examQuestionsInclude = {
@@ -918,7 +919,6 @@ export class ExamsService {
     }
   }
 
-  // vale para rascunho e publicação: nunca passar do total da prova
   private assertPointsWithinTotal(
     questions: { points: number }[],
     totalScore: number,
@@ -1160,7 +1160,6 @@ export class ExamsService {
     return { id };
   }
 
-  // Aba "Visão geral" do detalhe da prova: números + situação de cada aluno.
   async getOverview(req: AuthenticatedRequest, id: string) {
     const exam = await this.prisma.exam.findFirst({
       where: { id, userId: req.user.id },
@@ -1198,7 +1197,7 @@ export class ExamsService {
         students.set(s.student.id, s.student.name),
       ),
     );
-    // aluno que começou a prova e depois saiu da turma continua aparecendo
+
     sessions.forEach((s) => students.set(s.student.id, s.student.name));
 
     const sessionByStudent = new Map(sessions.map((s) => [s.userId, s]));
@@ -1243,6 +1242,204 @@ export class ExamsService {
           : 0,
       },
       students: rows,
+    };
+  }
+
+  async getCorrection(
+    req: AuthenticatedRequest,
+    examId: string,
+    studentId: string,
+  ) {
+    const exam = await this.prisma.exam.findFirst({
+      where: { id: examId, userId: req.user.id },
+      include: {
+        examQuestions: {
+          orderBy: { order: 'asc' },
+          include: {
+            question: {
+              include: {
+                theme: { select: { name: true } },
+                questionOptions: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!exam) {
+      throw new NotFoundException('Prova não encontrada');
+    }
+
+    const session = await this.prisma.examSession.findUnique({
+      where: { examId_userId: { examId, userId: studentId } },
+      include: {
+        student: { select: { id: true, name: true } },
+        answers: true,
+        events: { orderBy: { createdAt: 'asc' } },
+      },
+    });
+    if (!session || session.status !== SessionStatus.FINISHED) {
+      throw new NotFoundException('Esse aluno ainda não entregou a prova');
+    }
+
+    const totalPoints = exam.examQuestions.reduce(
+      (total, item) => total + item.points,
+      0,
+    );
+    
+    const answerByQuestion = new Map(
+      session.answers.map((a) => [a.examQuestionId, a]),
+    );
+
+    const numberByExamQuestion = new Map(
+      exam.examQuestions.map((examQuestion, index) => [
+        examQuestion.id,
+        index + 1,
+      ]),
+    );
+
+    return {
+      exam: {
+        id: exam.id,
+        title: exam.title,
+        targetScore: exam.targetScore,
+      },
+      student: session.student,
+      score: session.score,
+            integrity: {
+        startedAt: session.startedAt,
+        finishedAt: session.finishedAt,
+        events: session.events.map((event) => ({
+          id: event.id,
+          type: event.type,
+          createdAt: event.createdAt,
+          questionNumber: numberByExamQuestion.get(event.examQuestionId) ?? null,
+        })),
+      },
+      questions: exam.examQuestions.map((examQuestion, index) => {
+        const answer = answerByQuestion.get(examQuestion.id);
+        const question = examQuestion.question;
+
+        return {
+          number: index + 1,
+          answerId: answer?.id ?? null,
+          type: question.type,
+          statement: question.statement,
+          themeName: question.theme.name,
+          maxScore: this.weightedScore(
+            examQuestion.points,
+            totalPoints,
+            exam.targetScore,
+          ),
+          options: question.questionOptions.map((option) => ({
+            label: option.label,
+            text: option.text,
+          })),
+          correctOption: question.correctOption,
+          content: answer?.content ?? '',
+          isCorrect: answer?.isCorrect ?? false,
+          score: answer?.score ?? 0,
+          gradeStatus: answer?.gradeStatus ?? GradeStatus.PENDING,
+          aiSuggestedScore: answer?.aiSuggestedScore ?? null,
+          aiJustification: answer?.aiJustification ?? null,
+          teacherFeedback: answer?.teacherFeedback ?? null,
+        };
+      }),
+    };
+  }
+
+  async gradeAnswer(
+    req: AuthenticatedRequest,
+    answerId: string,
+    dto: GradeAnswerDto,
+  ) {
+    const answer = await this.prisma.answer.findFirst({
+      where: {
+        id: answerId,
+        examQuestion: { exam: { userId: req.user.id } },
+      },
+      include: {
+        session: true,
+        examQuestion: {
+          include: {
+            question: { select: { type: true } },
+            exam: {
+              select: {
+                title: true,
+                targetScore: true,
+                examQuestions: { select: { points: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!answer) {
+      throw new NotFoundException('Resposta não encontrada');
+    }
+    if (answer.session.status !== SessionStatus.FINISHED) {
+      throw new BadRequestException('Esse aluno ainda não entregou a prova');
+    }
+    if (answer.examQuestion.question.type !== QuestionType.OPEN_ENDED) {
+      throw new BadRequestException(
+        'Somente questões dissertativas são corrigidas manualmente',
+      );
+    }
+
+    const maxScore = this.weightedScore(
+      answer.examQuestion.points,
+      answer.examQuestion.exam.examQuestions.reduce(
+        (total, item) => total + item.points,
+        0,
+      ),
+      answer.examQuestion.exam.targetScore,
+    );
+
+    const score = round2(dto.score);
+    if (score > maxScore) {
+      throw new BadRequestException(
+        `A nota não pode passar de ${fmtPoints(maxScore)} nesta questão`,
+      );
+    }
+
+    const feedback = dto.feedback?.trim() || null;
+
+    const sessionScore = await this.prisma.$transaction(async (tx) => {
+      await tx.answer.update({
+        where: { id: answerId },
+        data: {
+          score,
+          isCorrect: score === maxScore,
+          gradeStatus: GradeStatus.TEACHER_APPROVED,
+          teacherFeedback: feedback,
+        },
+      });
+
+      const answers = await tx.answer.findMany({
+        where: { sessionId: answer.sessionId },
+        select: { score: true },
+      });
+      const total = round2(answers.reduce((sum, a) => sum + a.score, 0));
+
+      await tx.examSession.update({
+        where: { id: answer.sessionId },
+        data: { score: total },
+      });
+      return total;
+    });
+
+    await this.logs.audit(
+      `Corrigiu uma resposta da prova ${answer.examQuestion.exam.title}`,
+      req.user.id,
+    );
+
+    return {
+      answerId,
+      score,
+      gradeStatus: GradeStatus.TEACHER_APPROVED,
+      teacherFeedback: feedback,
+      sessionScore,
     };
   }
 }
