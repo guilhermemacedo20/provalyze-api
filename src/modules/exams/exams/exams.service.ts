@@ -129,7 +129,6 @@ function round2(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-// 7.5 -> "7,5" (para as mensagens de erro em português)
 function fmtPoints(value: number) {
   return String(round2(value)).replace('.', ',');
 }
@@ -180,7 +179,6 @@ function mapDetail(exam: ExamDetailRow, now: Date) {
     type: eq.question.type,
     themeId: eq.question.theme.id,
     themeName: eq.question.theme.name,
-    // % de acertos já registrados nas respostas; null enquanto ninguém respondeu.
     correctRate: eq.answers.length
       ? Math.round(
           (eq.answers.filter((a) => a.isCorrect).length / eq.answers.length) *
@@ -236,7 +234,7 @@ export class ExamsService {
               },
             },
           },
-          orderBy: { exam: { startsAt: 'asc' } },
+          orderBy: { exam: { startsAt: 'desc' } },
         },
       },
     });
@@ -731,18 +729,37 @@ export class ExamsService {
   }
 
   private async finishedExam(exam: Exam, session: ExamSession) {
-    const answers = await this.prisma.answer.findMany({
-      where: { sessionId: session.id },
-      include: {
-        examQuestion: {
-          include: {
-            question: {
-              select: { type: true, theme: { select: { name: true } } },
+    const [answers, examQuestions] = await Promise.all([
+      this.prisma.answer.findMany({
+        where: { sessionId: session.id },
+        include: {
+          examQuestion: {
+            include: {
+              question: {
+                select: {
+                  type: true,
+                  statement: true,
+                  theme: { select: { name: true } },
+                  questionOptions: { select: { label: true, text: true } },
+                },
+              },
             },
           },
         },
-      },
-    });
+      }),
+      this.prisma.examQuestion.findMany({
+        where: { examId: exam.id },
+        select: { points: true },
+      }),
+    ]);
+
+    const totalPoints = examQuestions.reduce(
+      (total, item) => total + item.points,
+      0,
+    );
+    const ordered = [...answers].sort(
+      (a, b) => a.examQuestion.order - b.examQuestion.order,
+    );
 
     return this.blocked(exam, 'Prova já finalizada', {
       finished: true,
@@ -751,14 +768,35 @@ export class ExamsService {
       targetScore: exam.targetScore,
       startedAt: session.startedAt,
       finishedAt: session.finishedAt,
-      review: answers.map((answer) => ({
-        examQuestionId: answer.examQuestionId,
-        type: answer.examQuestion.question.type,
-        themeName: answer.examQuestion.question.theme.name,
-        isCorrect: answer.isCorrect,
-        score: answer.score,
-        gradeStatus: answer.gradeStatus,
-      })),
+      review: ordered.map((answer, index) => {
+        const question = answer.examQuestion.question;
+        const chosen = question.questionOptions.find(
+          (option) => option.label === answer.content,
+        );
+
+        return {
+          examQuestionId: answer.examQuestionId,
+          type: question.type,
+          themeName: question.theme.name,
+          isCorrect: answer.isCorrect,
+          score: answer.score,
+          gradeStatus: answer.gradeStatus,
+          number: index + 1,
+          statement: question.statement,
+          maxScore: this.weightedScore(
+            answer.examQuestion.points,
+            totalPoints,
+            exam.targetScore,
+          ),
+          teacherFeedback: answer.teacherFeedback,
+          studentAnswer:
+            question.type === QuestionType.MULTIPLE_CHOICE
+              ? chosen
+                ? `${chosen.label}) ${chosen.text}`
+                : ''
+              : answer.content,
+        };
+      }),
     });
   }
 
@@ -1053,7 +1091,6 @@ export class ExamsService {
     }
 
     const { startsAt, endsAt } = this.parseSchedule(dto);
-    // se o front não mandar o total, mantém o que já estava gravado
     const totalScore = dto.totalScore ?? existing.targetScore;
 
     await this.assertQuestionsAreFromTeacher(user.id, dto.questions);
