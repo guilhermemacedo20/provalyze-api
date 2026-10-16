@@ -21,6 +21,10 @@ type ReportContent = {
   median: number | null;
   hitRate: number | null;
   themes: { name: string; percent: number }[];
+  students: {
+    name: string;
+    exams: { title: string; score: number | null }[];
+  }[];
   gaps: {
     theme: string;
     percent: number;
@@ -508,6 +512,7 @@ export class ReportService {
       median: null,
       hitRate: null,
       themes: [],
+      students: [],
       gaps: [],
     };
 
@@ -517,6 +522,7 @@ export class ReportService {
       content.median = performance.median;
       content.hitRate = performance.hitRate;
       content.themes = performance.themes;
+      content.students = performance.students;
     }
 
     if (hasGaps) {
@@ -713,8 +719,18 @@ export class ReportService {
             where: {
               ...fullyGradedSession,
               examId: { in: examIds },
+              student: {
+                studentAssignments: {
+                  some: { classId, endedAt: null },
+                },
+              },
             },
-            select: { id: true, score: true },
+            select: {
+              id: true,
+              score: true,
+              student: { select: { id: true, name: true } },
+              exam: { select: { title: true } },
+            },
           });
     const answers =
       sessions.length === 0
@@ -732,6 +748,22 @@ export class ReportService {
               },
             },
           });
+
+    const studentsById = new Map<
+      string,
+      { name: string; exams: { title: string; score: number | null }[] }
+    >();
+    for (const session of sessions) {
+      const current = studentsById.get(session.student.id) ?? {
+        name: session.student.name,
+        exams: [],
+      };
+      current.exams.push({
+        title: session.exam.title,
+        score: session.score,
+      });
+      studentsById.set(session.student.id, current);
+    }
 
     const scores = sessions
       .map((session) => session.score)
@@ -771,6 +803,14 @@ export class ReportService {
           (a, b) =>
             b.percent - a.percent || a.name.localeCompare(b.name, 'pt-BR'),
         ),
+      students: [...studentsById.values()]
+        .map((student) => ({
+          ...student,
+          exams: student.exams.sort((a, b) =>
+            a.title.localeCompare(b.title, 'pt-BR'),
+          ),
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
     };
   }
 
