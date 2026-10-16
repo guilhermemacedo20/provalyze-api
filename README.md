@@ -19,7 +19,7 @@ Versões do repositório.
 | TypeScript | 5.7.3 | Tipagem |
 | Prisma | 6.19.3 | ORM e migrations |
 | PostgreSQL | 16 (imagem `postgres:16-alpine`) | Banco  de dados |
-| Docker Compose | — | Sobe o Postgres localmente |
+| Docker Compose | - | Sobe o Postgres localmente |
 | class-validator | 0.15.1 | DTOs |
 | class-transformer | 0.5.1 | `transform` do ValidationPipe |
 | ESLint | 9.18.0 | Lint |
@@ -29,7 +29,7 @@ Pipe global: `whitelist`, `transform`, `forbidNonWhitelisted`. CORS habilitado. 
 
 ## Módulos
 
-`PrismaModule` é global — único acesso ao Postgres.
+`PrismaModule` é global, único acesso ao Postgres.
 
 | Módulo | Domínio | O que cobre |
 |---|---|---|

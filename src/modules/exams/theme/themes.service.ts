@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateThemeDto } from './dto/themes.dto';
 import { LogsService } from 'src/infra/logs/logs.service';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
@@ -76,6 +80,16 @@ export class ThemeService {
 
     if (!existing) {
       throw new NotFoundException('Tema não encontrado');
+    }
+
+    const usedInExam = await this.prisma.examQuestion.count({
+      where: { question: { themeId: id } },
+    });
+    
+    if (usedInExam > 0) {
+      throw new ConflictException(
+        'Esse tema tem questões usadas em provas e não pode ser excluído',
+      );
     }
 
     await this.logs.audit(`Theme Deleted ${existing.id}`, user.id);
