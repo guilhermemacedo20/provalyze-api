@@ -175,7 +175,7 @@ describe('ClassesService', () => {
 
     const classes = await service.listClasses(admin);
 
-    expect(classes[0].teacherName).toBe('—');
+    expect(classes[0].teacherName).toBe('-');
     expect(classes[0].studentsCount).toBe(0);
     expect(classes[0].averageScore).toBeNull();
   });

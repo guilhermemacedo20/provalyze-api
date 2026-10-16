@@ -4,9 +4,30 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { ExamStatus, GradeStatus, Role, SessionStatus } from '@prisma/client';
+import {
+  ExamStatus,
+  GradeStatus,
+  ReportAnalysisType,
+  Role,
+  SessionStatus,
+} from '@prisma/client';
 import { AIService } from 'src/infra/ai/ai.service';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { CreatePedagogicalReportDto } from './dto/create-pedagogical-report.dto';
+import { LogsService } from 'src/infra/logs/logs.service';
+
+type ReportContent = {
+  average: number | null;
+  median: number | null;
+  hitRate: number | null;
+  themes: { name: string; percent: number }[];
+  gaps: {
+    theme: string;
+    percent: number;
+    evidence: string;
+    suggestion: string;
+  }[];
+};
 
 function roundScore(value: number | null) {
   if (!value) return null;
@@ -39,6 +60,7 @@ export class ReportService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly aiService: AIService,
+    private readonly logs: LogsService,
   ) {}
 
   async dashInformation(req: any) {
@@ -358,6 +380,186 @@ export class ReportService {
     }));
   }
 
+  async listPedagogicalReports(req: any, classId?: string) {
+    const user = req.user;
+
+    const classes = await this.prisma.class.findMany({
+      where:
+        user.role === Role.TEACHER
+          ? {
+              teacherAssignments: {
+                some: { userId: user.id, endedAt: null },
+              },
+            }
+          : {},
+      select: {
+        id: true,
+        name: true,
+        subject: { select: { name: true } },
+      },
+    });
+
+    if (classId && !classes.some((schoolClass) => schoolClass.id === classId)) {
+      throw new UnauthorizedException(
+        'Usuário não possui permissão para visualizar esse relatório',
+      );
+    }
+
+    if (classes.length === 0) return [];
+
+    const reports = await this.prisma.pedagogicalReport.findMany({
+      where: {
+        classId: classId || {
+          in: classes.map((schoolClass) => schoolClass.id),
+        },
+      },
+      include: {
+        class: { select: { name: true } },
+        author: { select: { name: true } },
+      },
+    });
+
+    return reports.map((report) => ({
+      id: report.id,
+      title: report.title,
+      className: report.class.name,
+      createdAt: report.createdAt,
+      authorName: report.author.name,
+      analysisType: report.analysisType,
+    }));
+  }
+
+  async getPedagogicalReport(req: any, id: string) {
+    const user = req.user;
+    const classes = await this.prisma.class.findMany({
+      where:
+        user.role === Role.TEACHER
+          ? {
+              teacherAssignments: {
+                some: { userId: user.id, endedAt: null },
+              },
+            }
+          : {},
+      select: {
+        id: true,
+        name: true,
+        subject: { select: { name: true } },
+      },
+    });
+
+    const report = await this.prisma.pedagogicalReport.findFirst({
+      where: {
+        id,
+        classId: { in: classes.map((schoolClass) => schoolClass.id) },
+      },
+      include: {
+        class: { select: { name: true, subject: { select: { name: true } } } },
+        author: { select: { name: true } },
+      },
+    });
+
+    if (!report) {
+      throw new NotFoundException('Relatório não encontrado');
+    }
+
+    return {
+      id: report.id,
+      title: report.title,
+      className: report.class.name,
+      subjectName: report.class.subject.name,
+      authorName: report.author.name,
+      analysisType: report.analysisType,
+      createdAt: report.createdAt,
+      content: report.content,
+    };
+  }
+
+  async createPedagogicalReport(req: any, dto: CreatePedagogicalReportDto) {
+    const user = req.user;
+
+    const classes = await this.prisma.class.findMany({
+      where:
+        user.role === Role.TEACHER
+          ? {
+              teacherAssignments: {
+                some: { userId: user.id, endedAt: null },
+              },
+            }
+          : {},
+      select: {
+        id: true,
+        name: true,
+        subject: { select: { name: true } },
+      },
+    });
+
+    const schoolClass = classes.find((item) => item.id === dto.classId);
+    if (!schoolClass) {
+      throw new UnauthorizedException(
+        'Usuário não possui permissão para gerar esse relatório',
+      );
+    }
+
+    const hasPerformance = dto.analysisType !== ReportAnalysisType.GAPS;
+    const hasGaps = dto.analysisType !== ReportAnalysisType.PERFORMANCE;
+
+    const content: ReportContent = {
+      average: null,
+      median: null,
+      hitRate: null,
+      themes: [],
+      gaps: [],
+    };
+
+    if (hasPerformance) {
+      const performance = await this.performanceSnapshot(user, schoolClass.id);
+      content.average = performance.average;
+      content.median = performance.median;
+      content.hitRate = performance.hitRate;
+      content.themes = performance.themes;
+    }
+
+    if (hasGaps) {
+      content.gaps = await this.gapSnapshot(user, schoolClass.id);
+    }
+
+    const report = await this.prisma.pedagogicalReport.create({
+      data: {
+        title: schoolClass.subject.name,
+        classId: schoolClass.id,
+        authorId: user.id,
+        analysisType: dto.analysisType,
+        content: content,
+      },
+      include: { author: { select: { name: true } } },
+    });
+    this.logs.audit(`Create pedagogical report ${report.id}`, user.id);
+    return {
+      id: report.id,
+      title: report.title,
+      className: schoolClass.name,
+      subjectName: schoolClass.subject.name,
+      authorName: report.author.name,
+      analysisType: report.analysisType,
+      createdAt: report.createdAt,
+      content,
+    };
+  }
+
+  async deletePedagogicalReport(req: any, id: string) {
+    const user = req.user;
+    const report = await this.prisma.pedagogicalReport.findFirst({
+      where: { authorId: user.id, id },
+    });
+    if (!report) {
+      throw new NotFoundException('Relatório não encontrado');
+    } else {
+      this.logs.audit(`Exclude pedagogical report ${report.id}`, user.id);
+      await this.prisma.pedagogicalReport.delete({ where: { id: report.id } });
+    }
+    return { report: report.id, message: 'Excluido com sucesso' };
+  }
+
   async studentAnalytics(req: any, classId: string, studentId: string) {
     const user = req.user;
     if (user.role === Role.STUDENT && user.id !== studentId) {
@@ -489,6 +691,214 @@ export class ReportService {
     }
 
     return analysis;
+  }
+
+  private async performanceSnapshot(
+    user: { id: string; role: Role },
+    classId: string,
+  ) {
+    const exams = await this.prisma.exam.findMany({
+      where: {
+        status: { in: [ExamStatus.PUBLISHED, ExamStatus.ENDED] },
+        ...(user.role === Role.TEACHER ? { userId: user.id } : {}),
+        assignments: { some: { classId } },
+      },
+      select: { id: true },
+    });
+    const examIds = exams.map((exam) => exam.id);
+    const sessions =
+      examIds.length === 0
+        ? []
+        : await this.prisma.examSession.findMany({
+            where: {
+              ...fullyGradedSession,
+              examId: { in: examIds },
+            },
+            select: { id: true, score: true },
+          });
+    const answers =
+      sessions.length === 0
+        ? []
+        : await this.prisma.answer.findMany({
+            where: { sessionId: { in: sessions.map((session) => session.id) } },
+            select: {
+              isCorrect: true,
+              score: true,
+              examQuestion: {
+                select: {
+                  points: true,
+                  question: { select: { theme: { select: { name: true } } } },
+                },
+              },
+            },
+          });
+
+    const scores = sessions
+      .map((session) => session.score)
+      .filter((score): score is number => score != null);
+    const correct = answers.filter((answer) => answer.isCorrect).length;
+    const totals = new Map<string, { score: number; points: number }>();
+
+    for (const answer of answers) {
+      const name = answer.examQuestion.question.theme.name;
+      const current = totals.get(name) ?? { score: 0, points: 0 };
+      current.score += answer.score;
+      current.points += answer.examQuestion.points;
+      totals.set(name, current);
+    }
+
+    return {
+      average: scores.length
+        ? Math.round(
+            (scores.reduce((total, score) => total + score, 0) /
+              scores.length) *
+              10,
+          ) / 10
+        : null,
+      median: median(scores),
+      hitRate: answers.length
+        ? Math.round((correct / answers.length) * 100)
+        : null,
+      themes: [...totals.entries()]
+        .map(([name, total]) => ({
+          name,
+          percent:
+            total.points > 0
+              ? Math.round((total.score / total.points) * 100)
+              : 0,
+        }))
+        .sort(
+          (a, b) =>
+            b.percent - a.percent || a.name.localeCompare(b.name, 'pt-BR'),
+        ),
+    };
+  }
+
+  private async gapSnapshot(user: { id: string; role: Role }, classId: string) {
+    const exams = await this.prisma.exam.findMany({
+      where: {
+        status: { in: [ExamStatus.PUBLISHED, ExamStatus.ENDED] },
+        ...(user.role === Role.TEACHER ? { userId: user.id } : {}),
+        assignments: { some: { classId } },
+      },
+      select: {
+        title: true,
+        targetScore: true,
+        examQuestions: {
+          select: {
+            points: true,
+            question: {
+              select: {
+                statement: true,
+                theme: { select: { name: true } },
+              },
+            },
+            answers: {
+              where: {
+                gradeStatus: {
+                  in: [GradeStatus.AUTO, GradeStatus.TEACHER_APPROVED],
+                },
+                session: {
+                  status: SessionStatus.FINISHED,
+                  student: {
+                    studentAssignments: {
+                      some: { endedAt: null, classId },
+                    },
+                  },
+                },
+              },
+              select: { content: true, isCorrect: true, score: true },
+            },
+          },
+        },
+      },
+    });
+
+    const byTheme = new Map<
+      string,
+      {
+        examTitle: string;
+        statement: string;
+        points: number;
+        targetScore: number;
+        correctCount: number;
+        answerCount: number;
+        answers: { content: string; isCorrect: boolean; score: number }[];
+      }[]
+    >();
+
+    for (const exam of exams) {
+      for (const examQuestion of exam.examQuestions) {
+        if (examQuestion.answers.length === 0) continue;
+        const wrong = examQuestion.answers.filter(
+          (answer) => !answer.isCorrect,
+        );
+        const right = examQuestion.answers.filter((answer) => answer.isCorrect);
+        const name = examQuestion.question.theme.name;
+        const questions = byTheme.get(name) ?? [];
+        questions.push({
+          examTitle: exam.title,
+          statement: examQuestion.question.statement,
+          points: examQuestion.points,
+          targetScore: exam.targetScore,
+          correctCount: right.length,
+          answerCount: examQuestion.answers.length,
+          answers: [...wrong, ...right].slice(0, 8).map((answer) => ({
+            content: answer.content,
+            isCorrect: answer.isCorrect,
+            score: answer.score,
+          })),
+        });
+        byTheme.set(name, questions);
+      }
+    }
+
+    const rankedThemes = [...byTheme.entries()]
+      .map(([name, questions]) => {
+        const answerCount = questions.reduce(
+          (total, question) => total + question.answerCount,
+          0,
+        );
+        const correctCount = questions.reduce(
+          (total, question) => total + question.correctCount,
+          0,
+        );
+        return {
+          name,
+          questions,
+          percent:
+            answerCount > 0
+              ? Math.round((correctCount / answerCount) * 100)
+              : 0,
+        };
+      })
+      .sort((a, b) => a.percent - b.percent)
+      .slice(0, 5);
+
+    if (rankedThemes.length === 0) return [];
+
+    const gaps = await this.aiService.analyseClassTheme({
+      themes: rankedThemes.map(({ name, questions }) => ({ name, questions })),
+    });
+
+    if (!gaps) {
+      throw new BadRequestException(
+        'Não foi possível identificar as lacunas dessa turma',
+      );
+    }
+
+    const percentByTheme = new Map(
+      rankedThemes.map((theme) => [
+        theme.name.trim().toLocaleLowerCase('pt-BR'),
+        theme.percent,
+      ]),
+    );
+
+    return gaps.slice(0, 5).map((gap) => ({
+      ...gap,
+      percent:
+        percentByTheme.get(gap.theme.trim().toLocaleLowerCase('pt-BR')) ?? 0,
+    }));
   }
 
   private async adminDashboard() {

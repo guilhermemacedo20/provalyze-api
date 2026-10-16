@@ -23,11 +23,11 @@ Não invente tema, nota ou prova que não esteja nos dados.`;
 const ANALYSE_CLASS_THEMES_PROMPT = `Identifique lacunas pedagógicas da turma.
 Compare cada resposta com o enunciado da questão. Use apenas os dados recebidos, não invente dados.
 Devolva apenas JSON neste formato:
-{"gaps":[{"theme":"nome do tema","evidence":"parágrafo curto","suggestion":"parágrafo curto"}]}
+{"gaps":[{"theme":"Mantenha o mesmo nome do tema enviado","evidence":"parágrafo curto","suggestion":"parágrafo curto"}]}
 Onde:
 - evidence: o que as respostas mostram em relação ao enunciado, sem inventar fala do aluno
 - suggestion: o que vale revisar com a turma e ensinar aos alunos.
-Inclua só temas em que as respostas indicam dificuldade. Se não houver lacuna, devolva {"gaps":[]}, porém se não tiver uma sugestão ao tema retorne apenas o tema
+Inclua só temas em que as respostas indicam dificuldade. Se não houver lacuna, devolva {"gaps":[]}, porém se não tiver uma sugestão ao tema retorne apenas o tema enviado
 e na evidência identifique o que os alunos estão fazendo corretamente.`;
 
 export type ClassGapQuestion = {
