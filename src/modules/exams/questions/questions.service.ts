@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -176,6 +177,16 @@ export class QuestionsService {
 
     if (!existing) {
       throw new NotFoundException('Questão não encontrada');
+    }
+
+    const usedInExam = await this.prisma.examQuestion.count({
+      where: { questionId: id },
+    });
+    
+    if (usedInExam > 0) {
+      throw new ConflictException(
+        'Essa questão está em uma prova e não pode ser excluída',
+      );
     }
 
     await this.logs.audit(`Question deleted ${existing.id}`, user.id);

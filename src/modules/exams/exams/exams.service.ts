@@ -227,6 +227,9 @@ export class ExamsService {
           select: { name: true, course: { select: { name: true } } },
         },
         examAssignments: {
+          where: {
+            exam: { isNot: { status: ExamStatus.DRAFT } },
+          },
           include: {
             exam: {
               include: {

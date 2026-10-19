@@ -42,6 +42,12 @@ enum ExamEventType {
   CONTEXT_MENU
 }
 
+enum ReportAnalysisType {
+  PERFORMANCE
+  GAPS
+  BOTH
+}
+
 model User {
   id        String   @id @default(cuid())
   name      String
@@ -61,6 +67,7 @@ model User {
 
   teacherAssignments TeacherAssignment[]
   studentAssignments StudentAssignment[]
+  pedagogicalReports PedagogicalReport[]
 }
 
 // Logs
@@ -167,6 +174,7 @@ model Class {
   teacherAssignments TeacherAssignment[]
   studentAssignments StudentAssignment[]
   examAssignments    ExamAssignment[]
+  pedagogicalReports PedagogicalReport[]
 }
 
 model TeacherAssignment {
@@ -297,4 +305,20 @@ model ExamEvent {
 
   @@index([sessionId, createdAt])
   @@index([examQuestionId])
+}
+
+model PedagogicalReport {
+  id           String             @id @default(cuid())
+  title        String
+  classId      String
+  authorId     String
+  analysisType ReportAnalysisType
+  content      Json
+  createdAt    DateTime           @default(now())
+
+  class  Class @relation(fields: [classId], references: [id], onDelete: Restrict)
+  author User  @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([classId, createdAt])
+  @@index([authorId])
 }
