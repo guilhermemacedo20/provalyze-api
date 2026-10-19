@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { ExamsService } from './exams.service';
 import type { AuthenticatedRequest } from 'src/common/types/authenticated-request';
-import { SaveExamDto } from './dto/exams.dto';
+import { GradeAnswerDto, SaveExamDto } from './dto/exams.dto';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt.guard';
 import { RolesGuard } from 'src/common/guards/role.guard';
@@ -38,6 +38,24 @@ export class ExamsController {
   @Get()
   listExams(@Req() req: AuthenticatedRequest) {
     return this.examsService.listExams(req);
+  }
+
+  @Get(':id/students/:studentId/correction')
+  getCorrection(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Param('studentId') studentId: string,
+  ) {
+    return this.examsService.getCorrection(req, id, studentId);
+  }
+
+    @Patch('answers/:answerId/grade')
+  gradeAnswer(
+    @Req() req: AuthenticatedRequest,
+    @Param('answerId') answerId: string,
+    @Body() gradeAnswerDto: GradeAnswerDto,
+  ) {
+    return this.examsService.gradeAnswer(req, answerId, gradeAnswerDto);
   }
 
   @Get(':id')

@@ -104,3 +104,17 @@ export class SubmitExamEventDto {
   @Type(() => EventDto)
   event!: EventDto;
 }
+
+export class GradeAnswerDto {
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  score!: number;
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @MaxLength(1000)
+  feedback?: string;
+}
