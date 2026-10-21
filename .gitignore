@@ -7,3 +7,6 @@ node_modules
 /coverage
 
 /generated/prisma
+
+/scripts/load-test/students.json
+/scripts/load-test/.env.load-test
