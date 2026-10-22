@@ -6,6 +6,7 @@ import { prismaMock } from 'src/test/mocks/prisma.mock';
 import { logsMock } from 'src/test/mocks/logs.mock';
 import { mailMock } from 'src/test/mocks/mail.mock';
 import { AuthService } from './auth.service';
+import { Role } from '@prisma/client';
 
 jest.mock('bcrypt', () => ({
   compare: jest.fn(),
@@ -135,6 +136,21 @@ describe('AuthService', () => {
       'Não foi possível alterar a senha',
     );
     expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+
+  it('should reject public registration for non-student roles', async () => {
+    prismaMock.user.findUnique.mockResolvedValue(null);
+
+    const register = service.registerUser({
+      name: 'Prof',
+      email: 'prof@escola.edu.br',
+      password: 'Senha123',
+      role: Role.TEACHER,
+    });
+
+    await expect(register).rejects.toBeInstanceOf(BadRequestException);
+    await expect(register).rejects.toThrow('Perfil de acesso não permitido');
+    expect(prismaMock.user.create).not.toHaveBeenCalled();
   });
 
   it('should return the logged user', async () => {

@@ -1,52 +1,43 @@
+const model = () => ({
+  findUnique: jest.fn(),
+  findFirst: jest.fn(),
+  findMany: jest.fn(),
+  create: jest.fn(),
+  createMany: jest.fn(),
+  update: jest.fn(),
+  updateMany: jest.fn(),
+  delete: jest.fn(),
+  deleteMany: jest.fn(),
+  count: jest.fn(),
+  aggregate: jest.fn(),
+  groupBy: jest.fn(),
+});
+
 export const prismaMock = {
-  user: {
-    findUnique: jest.fn(),
-    update: jest.fn(),
-    count: jest.fn(),
-    findMany: jest.fn(),
-    create: jest.fn(),
-    delete: jest.fn(),
-  },
-  course: {
-    create: jest.fn(),
-    findMany: jest.fn(),
-    findUnique: jest.fn(),
-    update: jest.fn(),
-    delete: jest.fn(),
-  },
-  subject: {
-    create: jest.fn(),
-    findMany: jest.fn(),
-    findUnique: jest.fn(),
-    findFirst: jest.fn(),
-    delete: jest.fn(),
-  },
-  class: {
-    create: jest.fn(),
-    findMany: jest.fn(),
-    findUnique: jest.fn(),
-    delete: jest.fn(),
-  },
-  studentAssignment: {
-    findFirst: jest.fn(),
-    create: jest.fn(),
-    update: jest.fn(),
-  },
-  theme: {
-    create: jest.fn(),
-    findMany: jest.fn(),
-    findFirst: jest.fn(),
-    update: jest.fn(),
-    delete: jest.fn(),
-  },
-  question: {
-    create: jest.fn(),
-    findMany: jest.fn(),
-    findFirst: jest.fn(),
-    update: jest.fn(),
-    delete: jest.fn(),
-  },
-  questionOption: {
-    deleteMany: jest.fn(),
-  },
+  user: model(),
+  course: model(),
+  subject: model(),
+  class: model(),
+  studentAssignment: model(),
+  teacherAssignment: model(),
+  theme: model(),
+  question: model(),
+  questionOption: model(),
+  exam: model(),
+  examQuestion: model(),
+  examAssignment: model(),
+  examSession: model(),
+  answer: model(),
+  examEvent: model(),
+  pedagogicalReport: model(),
+  auditEvent: model(),
+  passwordResetToken: model(),
+  $transaction: jest.fn((operations: unknown) => {
+    if (Array.isArray(operations)) {
+      return Promise.all(operations);
+    }
+    return operations;
+  }),
+  $queryRaw: jest.fn(),
+  $executeRawUnsafe: jest.fn(),
 };

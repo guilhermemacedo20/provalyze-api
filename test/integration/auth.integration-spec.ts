@@ -105,6 +105,21 @@ describe('Auth - integração (API + service + banco)', () => {
     await expect(prisma.user.count()).resolves.toBe(0);
   });
 
+  it('deveRetornar400QuandoCadastroPublicoTentaCriarProfessor', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/auth/register')
+      .send({
+        name: 'Prof',
+        email: 'prof@escola.edu.br',
+        password: 'Senha123',
+        role: 'TEACHER',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe('Perfil de acesso não permitido');
+    await expect(prisma.user.count()).resolves.toBe(0);
+  });
+
   it('deveRetornar400QuandoCadastroPublicoTentaCriarAdmin', async () => {
     // Act
     const response = await request(app.getHttpServer())
@@ -151,14 +166,14 @@ describe('Auth - integração (API + service + banco)', () => {
   });
 
   it('deveCadastrarFazerLoginEConsultarOProprioPerfilComOToken', async () => {
-    // Arrange: cadastro pela API
+    // Arrange: cadastro público só permite STUDENT
     const register = await request(app.getHttpServer())
       .post('/api/auth/register')
       .send({
         name: 'Bruno Lima',
         email: 'bruno@escola.edu.br',
         password: 'Senha123',
-        role: 'TEACHER',
+        role: 'STUDENT',
       })
       .expect(201);
 
@@ -174,7 +189,7 @@ describe('Auth - integração (API + service + banco)', () => {
       id: register.body.user.id,
       name: 'Bruno Lima',
       email: 'bruno@escola.edu.br',
-      role: 'TEACHER',
+      role: 'STUDENT',
       registrationNumber: null,
     });
   });

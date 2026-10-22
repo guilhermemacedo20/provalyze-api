@@ -10,7 +10,7 @@ describe('UsersController', () => {
   const controller = new UsersController(
     new UsersService(prismaMock as unknown as PrismaService, mailMock),
   );
-
+  const req = { user: { id: '1', role: 'ADMIN' } };
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -26,7 +26,7 @@ describe('UsersController', () => {
     prismaMock.user.findUnique.mockResolvedValue(null);
     prismaMock.user.create.mockResolvedValue(userData);
 
-    const result = await controller.createUserFromAdmin(userData);
+    const result = await controller.createUserFromAdmin(req, userData);
 
     expect(result).toEqual(userData);
     expect(prismaMock.user.create).toHaveBeenCalledWith({ data: userData });
@@ -38,7 +38,7 @@ describe('UsersController', () => {
       email: 'ana@escola.edu.br',
     });
 
-    const userExists = controller.createUserFromAdmin({
+    const userExists = controller.createUserFromAdmin(req, {
       name: 'Ana',
       email: 'ana@escola.edu.br',
       role: Role.STUDENT,

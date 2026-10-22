@@ -22,7 +22,7 @@ describe('UsersService', () => {
       role: Role.TEACHER,
     });
 
-    prismaMock.user.create.mockResolvedValue({ id: '1' });
+    prismaMock.user.update.mockResolvedValue({ id: '1' });
 
     await service.deleteUser({ user: { id: '1', role: Role.TEACHER } }, '1');
 
@@ -55,27 +55,37 @@ describe('UsersService', () => {
   });
 
   it('should update user', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: '1',
+      role: Role.TEACHER,
+    });
     prismaMock.user.update.mockResolvedValue({
       id: '1',
       name: 'Updated Name',
       email: 'test@example.com',
+      role: Role.TEACHER,
     });
 
     await expect(
-      service.updateUser('1', {
+      service.updateUser(admin, '1', {
         name: 'Updated Name',
         email: 'test@example.com',
-        role: Role.ADMIN,
+        role: Role.TEACHER,
       }),
     ).resolves.toEqual({
       id: '1',
       name: 'Updated Name',
-      email: 'test@example.com'
+      email: 'test@example.com',
+      role: Role.TEACHER,
     });
 
     expect(prismaMock.user.update).toHaveBeenCalledWith({
       where: { id: '1' },
-      data: { name: 'Updated Name', email: 'test@example.com', role: Role.ADMIN },
+      data: {
+        name: 'Updated Name',
+        email: 'test@example.com',
+        role: Role.TEACHER,
+      },
     });
   });
 
