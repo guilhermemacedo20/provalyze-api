@@ -416,6 +416,7 @@ export class ReportService {
         classId: classId || {
           in: classes.map((schoolClass) => schoolClass.id),
         },
+        authorId: user.id,
       },
       include: {
         author: { select: { name: true } },
