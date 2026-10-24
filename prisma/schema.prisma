@@ -174,7 +174,6 @@ model Class {
   teacherAssignments TeacherAssignment[]
   studentAssignments StudentAssignment[]
   examAssignments    ExamAssignment[]
-  pedagogicalReports PedagogicalReport[]
 }
 
 model TeacherAssignment {
@@ -316,7 +315,6 @@ model PedagogicalReport {
   content      Json
   createdAt    DateTime           @default(now())
 
-  class  Class @relation(fields: [classId], references: [id], onDelete: Restrict)
   author User  @relation(fields: [authorId], references: [id], onDelete: Restrict)
 
   @@index([classId, createdAt])
