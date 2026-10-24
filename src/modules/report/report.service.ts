@@ -418,15 +418,18 @@ export class ReportService {
         },
       },
       include: {
-        class: { select: { name: true } },
         author: { select: { name: true } },
       },
+    });
+
+    const actualClass = await this.prisma.class.findFirst({
+      where: { id: classId },
     });
 
     return reports.map((report) => ({
       id: report.id,
       title: report.title,
-      className: report.class.name,
+      className: actualClass?.name || 'Classe',
       createdAt: report.createdAt,
       authorName: report.author.name,
       analysisType: report.analysisType,
@@ -457,7 +460,6 @@ export class ReportService {
         classId: { in: classes.map((schoolClass) => schoolClass.id) },
       },
       include: {
-        class: { select: { name: true, subject: { select: { name: true } } } },
         author: { select: { name: true } },
       },
     });
@@ -466,11 +468,18 @@ export class ReportService {
       throw new NotFoundException('Relatório não encontrado');
     }
 
+    const actualClass = await this.prisma.class.findFirst({
+      where: { id: report.classId },
+      include: {
+        subject: true,
+      },
+    });
+
     return {
       id: report.id,
       title: report.title,
-      className: report.class.name,
-      subjectName: report.class.subject.name,
+      className: actualClass?.name,
+      subjectName: actualClass?.subject.name,
       authorName: report.author.name,
       analysisType: report.analysisType,
       createdAt: report.createdAt,
