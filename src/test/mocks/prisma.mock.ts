@@ -32,7 +32,10 @@ export const prismaMock = {
   pedagogicalReport: model(),
   auditEvent: model(),
   passwordResetToken: model(),
-  $transaction: jest.fn((operations: unknown) => {
+  $transaction: jest.fn(async (operations: unknown): Promise<any> => {
+    if (typeof operations === 'function') {
+      return operations(prismaMock);
+    }
     if (Array.isArray(operations)) {
       return Promise.all(operations);
     }
