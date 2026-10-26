@@ -22,7 +22,7 @@ export class CreateQuestionDto {
 
   @IsOptional()
   @IsString()
-  imageUrl?: string;
+  imageUrl?: string | null;
 
   @IsOptional()
   @IsString()

@@ -68,6 +68,7 @@ model User {
   teacherAssignments TeacherAssignment[]
   studentAssignments StudentAssignment[]
   pedagogicalReports PedagogicalReport[]
+  questionImages     QuestionImage[]
 }
 
 // Logs
@@ -129,6 +130,17 @@ model Question {
   theme           Theme            @relation(fields: [themeId], references: [id], onDelete: Cascade)
   questionOptions QuestionOption[]
   examQuestions   ExamQuestion[]
+}
+
+model QuestionImage {
+  id        String   @id @default(cuid())
+  userId    String
+  data      Bytes
+  createdAt DateTime @default(now())
+
+  teacher User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model QuestionOption {

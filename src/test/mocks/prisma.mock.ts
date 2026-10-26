@@ -22,6 +22,7 @@ export const prismaMock = {
   teacherAssignment: model(),
   theme: model(),
   question: model(),
+  questionImage: model(),
   questionOption: model(),
   exam: model(),
   examQuestion: model(),
