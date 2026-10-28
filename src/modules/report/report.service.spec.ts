@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -8,7 +9,7 @@ import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { aiMock } from 'src/test/mocks/ai.mock';
 import { logsMock } from 'src/test/mocks/logs.mock';
 import { prismaMock } from 'src/test/mocks/prisma.mock';
-import { ReportService } from './report.service';
+import { ReportService, resolvePeriod } from './report.service';
 
 describe('ReportService', () => {
   const service = new ReportService(
@@ -25,70 +26,286 @@ describe('ReportService', () => {
     jest.clearAllMocks();
   });
 
-  it('information retorna para admin', async () => {
-    prismaMock.user.count
-      .mockResolvedValueOnce(100)
-      .mockResolvedValueOnce(10)
-      .mockResolvedValueOnce(80);
-    prismaMock.class.count.mockResolvedValue(5);
-    prismaMock.exam.count.mockResolvedValue(20);
-    prismaMock.examSession.count.mockResolvedValue(15);
-    prismaMock.examSession.aggregate.mockResolvedValue({
-      _avg: { score: 7.5 },
+  describe('dashInformation', () => {
+    const studentReq = { user: { id: 's1', role: Role.STUDENT } };
+    const answer = (
+      examQuestionId: string,
+      order: number,
+      gradeStatus: string,
+      isCorrect: boolean,
+    ) => ({
+      isCorrect,
+      gradeStatus,
+      examQuestion: {
+        id: examQuestionId,
+        order,
+        question: { theme: { name: `Tema ${order}` } },
+      },
     });
 
-    const result = await service.dashInformation({
-      user: { id: '1', role: Role.ADMIN },
+    beforeEach(() => {
+      prismaMock.class.findMany.mockResolvedValue([
+        { id: 'c1', name: 'Turma A', subject: { name: 'Eng. Software' } },
+      ]);
+      prismaMock.examSession.findMany.mockResolvedValue([]);
     });
 
-    expect(result).toEqual({
-      role: Role.ADMIN,
-      totalUsers: 100,
-      totalTeachers: 10,
-      totalStudents: 80,
-      totalClasses: 5,
-      totalExams: 20,
-      completedExams: 15,
-      totalAverage: 7.5,
+    it('retorna os cards do admin sem filtro de período', async () => {
+      prismaMock.user.count
+        .mockResolvedValueOnce(100)
+        .mockResolvedValueOnce(10)
+        .mockResolvedValueOnce(80);
+      prismaMock.class.count.mockResolvedValue(5);
+      prismaMock.exam.count.mockResolvedValue(20);
+      prismaMock.examSession.count.mockResolvedValue(15);
+      prismaMock.examSession.aggregate.mockResolvedValue({
+        _avg: { score: 7.5 },
+      });
+
+      const result = await service.dashInformation({
+        user: { id: '1', role: Role.ADMIN },
+      });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          role: Role.ADMIN,
+          totalUsers: 100,
+          totalTeachers: 10,
+          totalStudents: 80,
+          totalClasses: 5,
+          totalExams: 20,
+          completedExams: 15,
+          totalAverage: 7.5,
+        }),
+      );
+      expect(prismaMock.examSession.count).toHaveBeenCalledWith({
+        where: { status: 'FINISHED', exam: {} },
+      });
+    });
+
+    it('retorna cards do professor com taxa de acertos das respostas corrigidas', async () => {
+      prismaMock.exam.count.mockResolvedValue(3);
+      prismaMock.examSession.aggregate.mockResolvedValue({
+        _avg: { score: 8 },
+      });
+      prismaMock.examSession.findMany.mockResolvedValue([
+        {
+          score: 8,
+          finishedAt: new Date('2026-10-05T15:00:00.000Z'),
+          exam: { id: 'e1', title: 'Prova 1' },
+          answers: [
+            answer('q1', 1, 'AUTO', true),
+            answer('q2', 2, 'TEACHER_APPROVED', true),
+            answer('q3', 3, 'AUTO', false),
+            answer('q4', 4, 'AUTO', true),
+          ],
+        },
+      ]);
+
+      const result = await service.dashInformation(teacherReq);
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          role: Role.TEACHER,
+          totalExams: 3,
+          totalAverage: 8,
+          hitRate: 75,
+          answers: { correct: 3, wrong: 1, pending: 0 },
+        }),
+      );
+    });
+
+    it('retorna cards do aluno e próximas provas sem filtro de período', async () => {
+      prismaMock.examSession.count.mockResolvedValue(2);
+      prismaMock.exam.count.mockResolvedValue(1);
+      prismaMock.examSession.aggregate.mockResolvedValue({
+        _avg: { score: 6.2 },
+      });
+
+      const result = await service.dashInformation(studentReq, {
+        period: 'month',
+        month: '2026-10',
+      });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          role: Role.STUDENT,
+          upcomingExams: 1,
+          finishedExams: 2,
+          totalAverage: 6.2,
+          hitRate: null,
+        }),
+      );
+      const [[upcoming]] = prismaMock.exam.count.mock.calls as [
+        [{ where: object }],
+      ];
+      expect(upcoming.where).not.toHaveProperty('startsAt');
+      expect(prismaMock.examSession.count).toHaveBeenCalledWith({
+        where: {
+          status: 'FINISHED',
+          finishedAt: {
+            gte: new Date('2026-10-01T03:00:00.000Z'),
+            lt: new Date('2026-11-01T03:00:00.000Z'),
+          },
+          userId: 's1',
+          exam: {},
+        },
+      });
+    });
+
+    it('bloqueia turma fora do escopo do usuário', async () => {
+      await expect(
+        service.dashInformation(teacherReq, { classId: 'outra' }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('filtra por turma e ano', async () => {
+      prismaMock.exam.count.mockResolvedValue(0);
+      prismaMock.examSession.aggregate.mockResolvedValue({
+        _avg: { score: null },
+      });
+
+      await service.dashInformation(teacherReq, {
+        period: 'year',
+        year: '2025',
+        classId: 'c1',
+      });
+
+      expect(prismaMock.examSession.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            status: 'FINISHED',
+            finishedAt: {
+              gte: new Date('2025-01-01T03:00:00.000Z'),
+              lt: new Date('2026-01-01T03:00:00.000Z'),
+            },
+            student: { studentAssignments: { some: { classId: 'c1' } } },
+            exam: { userId: '1', assignments: { some: { classId: 'c1' } } },
+          },
+        }),
+      );
+    });
+
+    it('tira do gráfico de colunas a prova com resposta pendente e monta pizza e linha do tempo', async () => {
+      prismaMock.exam.count.mockResolvedValue(2);
+      prismaMock.examSession.aggregate.mockResolvedValue({
+        _avg: { score: 7 },
+      });
+      prismaMock.examSession.findMany.mockResolvedValue([
+        {
+          score: 8,
+          finishedAt: new Date('2026-10-05T15:00:00.000Z'),
+          exam: { id: 'e1', title: 'Prova 1' },
+          answers: [
+            answer('q2', 2, 'AUTO', false),
+            answer('q1', 1, 'AUTO', true),
+          ],
+        },
+        {
+          score: 6.912,
+          finishedAt: new Date('2026-10-05T20:00:00.000Z'),
+          exam: { id: 'e1', title: 'Prova 1' },
+          answers: [
+            answer('q1', 1, 'AUTO', true),
+            answer('q2', 2, 'AUTO', false),
+          ],
+        },
+        {
+          score: 0,
+          finishedAt: new Date('2026-11-01T00:30:00.000Z'),
+          exam: { id: 'e2', title: 'Prova 2' },
+          answers: [answer('q3', 1, 'PENDING', false)],
+        },
+      ]);
+
+      const result = await service.dashInformation(teacherReq, {
+        period: 'month',
+        month: '2026-10',
+      });
+
+      expect(result.scoresByExam).toEqual([
+        { examId: 'e1', title: 'Prova 1', average: 7.46 },
+      ]);
+      expect(result.pendingSubmissions).toBe(1);
+      expect(result.hitRate).toBe(50);
+      expect(result.questionsByExam[0]).toEqual({
+        examId: 'e1',
+        title: 'Prova 1',
+        answers: { correct: 2, wrong: 2, pending: 0 },
+        questions: [
+          { number: 1, theme: 'Tema 1', correct: 2, wrong: 0, pending: 0 },
+          { number: 2, theme: 'Tema 2', correct: 0, wrong: 2, pending: 0 },
+        ],
+      });
+      expect(result.questionsByExam[1].answers).toEqual({
+        correct: 0,
+        wrong: 0,
+        pending: 1,
+      });
+      expect(result.timeline).toEqual([
+        { label: '05/10', submissions: 2 },
+        { label: '31/10', submissions: 1 },
+      ]);
+    });
+
+    it('no total, a linha do tempo agrupa por mês', async () => {
+      prismaMock.examSession.count.mockResolvedValue(2);
+      prismaMock.exam.count.mockResolvedValue(0);
+      prismaMock.examSession.aggregate.mockResolvedValue({
+        _avg: { score: null },
+      });
+      prismaMock.examSession.findMany.mockResolvedValue(
+        ['2025-11-10', '2025-11-20', '2026-02-03'].map((date) => ({
+          score: null,
+          finishedAt: new Date(`${date}T12:00:00.000Z`),
+          exam: { id: 'e1', title: 'Prova 1' },
+          answers: [],
+        })),
+      );
+
+      const result = await service.dashInformation(studentReq, {
+        period: 'all',
+      });
+
+      expect(result.timeline).toEqual([
+        { label: '11/2025', submissions: 2 },
+        { label: '02/2026', submissions: 1 },
+      ]);
+      expect(result.scoresByExam).toEqual([]);
     });
   });
 
-  it('information retorna métricas para professor', async () => {
-    prismaMock.exam.count.mockResolvedValue(3);
-    prismaMock.examSession.aggregate.mockResolvedValue({
-      _avg: { score: 8 },
-    });
-    prismaMock.answer.groupBy.mockResolvedValue([
-      { isCorrect: true, _count: { _all: 7 } },
-      { isCorrect: false, _count: { _all: 3 } },
-    ]);
-
-    const result = await service.dashInformation(teacherReq);
-
-    expect(result).toEqual({
-      role: Role.TEACHER,
-      totalExams: 3,
-      totalAverage: 8,
-      hitRate: 70,
-    });
-  });
-
-  it('information retorna métricas para aluno', async () => {
-    prismaMock.examSession.count.mockResolvedValue(2);
-    prismaMock.exam.count.mockResolvedValue(1);
-    prismaMock.examSession.aggregate.mockResolvedValue({
-      _avg: { score: 6.2 },
+  describe('resolvePeriod', () => {
+    it('usa o mês atual de Brasília e respeita a virada do mês', () => {
+      expect(
+        resolvePeriod(
+          { period: 'month' },
+          new Date('2026-11-01T01:00:00.000Z'),
+        ),
+      ).toEqual({
+        from: new Date('2026-10-01T03:00:00.000Z'),
+        to: new Date('2026-11-01T03:00:00.000Z'),
+      });
     });
 
-    const result = await service.dashInformation({
-      user: { id: '1', role: Role.STUDENT },
+    it('usa o ano atual quando o ano não é informado', () => {
+      expect(
+        resolvePeriod({ period: 'year' }, new Date('2027-01-01T01:00:00.000Z')),
+      ).toEqual({
+        from: new Date('2026-01-01T03:00:00.000Z'),
+        to: new Date('2027-01-01T03:00:00.000Z'),
+      });
     });
 
-    expect(result).toEqual({
-      role: Role.STUDENT,
-      upcomingExams: 1,
-      finishedExams: 2,
-      totalAverage: 6.2,
+    it('dezembro termina em janeiro do ano seguinte', () => {
+      expect(resolvePeriod({ period: 'month', month: '2026-12' })).toEqual({
+        from: new Date('2026-12-01T03:00:00.000Z'),
+        to: new Date('2027-01-01T03:00:00.000Z'),
+      });
+    });
+
+    it('sem período devolve o total', () => {
+      expect(resolvePeriod({})).toEqual({ from: null, to: null });
     });
   });
 
