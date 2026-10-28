@@ -14,6 +14,7 @@ import { RolesGuard } from 'src/common/guards/role.guard';
 import { JwtAuthGuard } from 'src/common/guards/jwt.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { CreatePedagogicalReportDto } from './dto/create-pedagogical-report.dto';
+import { DashboardQueryDto } from './dto/dashboard.dto';
 
 @Controller('report')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -21,8 +22,8 @@ export class ReportController {
   constructor(private readonly reportService: ReportService) {}
 
   @Get('dashboard-information')
-  dashInformation(@Req() req: any) {
-    return this.reportService.dashInformation(req);
+  dashInformation(@Req() req: any, @Query() query: DashboardQueryDto) {
+    return this.reportService.dashInformation(req, query);
   }
 
   @Get('classAnalytics')

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -7,6 +8,7 @@ import {
 import {
   ExamStatus,
   GradeStatus,
+  Prisma,
   ReportAnalysisType,
   Role,
   SessionStatus,
@@ -15,6 +17,7 @@ import { AIService } from 'src/infra/ai/ai.service';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { CreatePedagogicalReportDto } from './dto/create-pedagogical-report.dto';
 import { LogsService } from 'src/infra/logs/logs.service';
+import { DashboardQueryDto } from './dto/dashboard.dto';
 
 type ReportContent = {
   average: number | null;
@@ -59,6 +62,53 @@ const fullyGradedSession = {
   },
 };
 
+const MAX_EXAMS_IN_CHART = 12;
+const TIME_ZONE = 'America/Sao_Paulo';
+
+type DashboardPeriodRange = {
+  from: Date | null;
+  to: Date | null;
+};
+type Outcomes = { correct: number; wrong: number; pending: number };
+type ExamStats = {
+  examId: string;
+  title: string;
+  hasPending: boolean;
+  scores: number[];
+  questions: Map<string, Outcomes & { order: number; theme: string }>;
+};
+
+const pad = (value: number) => String(value).padStart(2, '0');
+
+export function resolvePeriod(
+  query: DashboardQueryDto,
+  now = new Date(),
+): DashboardPeriodRange {
+  const today = now.toLocaleDateString('en-CA', { timeZone: TIME_ZONE });
+
+  if (query.period === 'year') {
+    const year = Number(query.year ?? today.slice(0, 4));
+    return {
+      from: new Date(`${year}-01-01T00:00:00-03:00`),
+      to: new Date(`${year + 1}-01-01T00:00:00-03:00`),
+    };
+  }
+
+  if (query.period === 'month') {
+    const [year, month] = (query.month ?? today.slice(0, 7))
+      .split('-')
+      .map(Number);
+    const from = new Date(`${year}-${pad(month)}-01T00:00:00-03:00`);
+    const next = month === 12 ? `${year + 1}-01` : `${year}-${pad(month + 1)}`;
+    return {
+      from,
+      to: new Date(`${next}-01T00:00:00-03:00`),
+    };
+  }
+
+  return { from: null, to: null };
+}
+
 @Injectable()
 export class ReportService {
   constructor(
@@ -67,22 +117,66 @@ export class ReportService {
     private readonly logs: LogsService,
   ) {}
 
-  async dashInformation(req: any) {
+  async dashInformation(req: any, query: DashboardQueryDto = {}) {
     const user = req.user;
+    const isAdmin = user.role === Role.ADMIN || user.role === Role.COORDINATOR;
+    const isTeacher = user.role === Role.TEACHER;
+    const isStudent = user.role === Role.STUDENT;
 
-    if (user.role === Role.ADMIN || user.role === Role.COORDINATOR) {
-      return this.adminDashboard();
+    if (!isAdmin && !isTeacher && !isStudent) {
+      throw new NotFoundException('Dashboard information not found');
     }
 
-    if (user.role === Role.TEACHER) {
-      return this.teacherDashboard(user.id);
+    const classes = await this.prisma.class.findMany({
+      where: isTeacher
+        ? { teacherAssignments: { some: { userId: user.id, endedAt: null } } }
+        : isStudent
+          ? { studentAssignments: { some: { userId: user.id, endedAt: null } } }
+          : {},
+      select: { id: true, name: true, subject: { select: { name: true } } },
+      orderBy: { name: 'asc' },
+    });
+
+    const { classId } = query;
+    if (classId && !classes.some((c) => c.id === classId)) {
+      throw new ForbiddenException('Você não tem acesso a essa turma');
     }
 
-    if (user.role === Role.STUDENT) {
-      return this.studentDashboard(user.id);
-    }
+    const period = resolvePeriod(query);
 
-    throw new NotFoundException('Dashboard information not found');
+    const sessions: Prisma.ExamSessionWhereInput = {
+      status: SessionStatus.FINISHED,
+      ...(period.from && period.to
+        ? { finishedAt: { gte: period.from, lt: period.to } }
+        : {}),
+      ...(isStudent ? { userId: user.id } : {}),
+      ...(classId && !isStudent
+        ? { student: { studentAssignments: { some: { classId } } } }
+        : {}),
+      exam: {
+        ...(isTeacher ? { userId: user.id } : {}),
+        ...(classId ? { assignments: { some: { classId } } } : {}),
+      },
+    };
+
+    const [cards, charts] = await Promise.all([
+      isAdmin
+        ? this.adminDashboard(sessions)
+        : isTeacher
+          ? this.teacherDashboard(user.id, period, sessions, classId)
+          : this.studentDashboard(user.id, sessions, classId),
+      this.dashboardCharts(sessions, query.period === 'month'),
+    ]);
+
+    return {
+      ...cards,
+      ...charts,
+      classes: classes.map((c) => ({
+        id: c.id,
+        name: c.name,
+        subjectName: c.subject.name,
+      })),
+    };
   }
 
   async classAnalytics(req: any, classId?: string, examId?: string) {
@@ -951,7 +1045,7 @@ export class ReportService {
     }));
   }
 
-  private async adminDashboard() {
+  private async adminDashboard(sessions: Prisma.ExamSessionWhereInput) {
     const [
       totalUsers,
       totalTeachers,
@@ -961,16 +1055,18 @@ export class ReportService {
       completedExams,
       averageResult,
     ] = await Promise.all([
-      this.prisma.user.count(),
-      this.prisma.user.count({ where: { role: Role.TEACHER } }),
-      this.prisma.user.count({ where: { role: Role.STUDENT } }),
+      this.prisma.user.count({ where: { anonymizedAt: null } }),
+      this.prisma.user.count({
+        where: { role: Role.TEACHER, anonymizedAt: null },
+      }),
+      this.prisma.user.count({
+        where: { role: Role.STUDENT, anonymizedAt: null },
+      }),
       this.prisma.class.count(),
       this.prisma.exam.count(),
-      this.prisma.examSession.count({
-        where: { status: SessionStatus.FINISHED },
-      }),
+      this.prisma.examSession.count({ where: sessions }),
       this.prisma.examSession.aggregate({
-        where: fullyGradedSession,
+        where: { ...sessions, answers: fullyGradedSession.answers },
         _avg: { score: true },
       }),
     ]);
@@ -987,50 +1083,48 @@ export class ReportService {
     };
   }
 
-  private async teacherDashboard(userId: string) {
-    const [totalExams, averageResult, grouped] = await Promise.all([
-      this.prisma.exam.count({ where: { userId } }),
-      this.prisma.examSession.aggregate({
+  private async teacherDashboard(
+    userId: string,
+    period: DashboardPeriodRange,
+    sessions: Prisma.ExamSessionWhereInput,
+    classId?: string,
+  ) {
+    const [totalExams, averageResult] = await Promise.all([
+      this.prisma.exam.count({
         where: {
-          ...fullyGradedSession,
-          exam: { userId },
+          userId,
+          ...(period.from && period.to
+            ? { startsAt: { gte: period.from, lt: period.to } }
+            : {}),
+          ...(classId ? { assignments: { some: { classId } } } : {}),
         },
+      }),
+      this.prisma.examSession.aggregate({
+        where: { ...sessions, answers: fullyGradedSession.answers },
         _avg: { score: true },
       }),
-      this.prisma.answer.groupBy({
-        by: ['isCorrect'],
-        where: {
-          gradeStatus: { in: [GradeStatus.AUTO, GradeStatus.TEACHER_APPROVED] },
-          examQuestion: { exam: { userId } },
-        },
-        _count: { _all: true },
-      }),
     ]);
-
-    const corrected = grouped.reduce(
-      (total, row) => total + row._count._all,
-      0,
-    );
-    const correct = grouped.find((row) => row.isCorrect)?._count._all ?? 0;
 
     return {
       role: Role.TEACHER,
       totalExams,
       totalAverage: roundScore(averageResult._avg.score),
-      hitRate: corrected ? Math.round((correct / corrected) * 100) : null,
     };
   }
 
-  private async studentDashboard(userId: string) {
+  private async studentDashboard(
+    userId: string,
+    sessions: Prisma.ExamSessionWhereInput,
+    classId?: string,
+  ) {
     const [finishedExams, upcomingExams, averageResult] = await Promise.all([
-      this.prisma.examSession.count({
-        where: { userId, status: SessionStatus.FINISHED },
-      }),
+      this.prisma.examSession.count({ where: sessions }),
       this.prisma.exam.count({
         where: {
           status: ExamStatus.PUBLISHED,
           assignments: {
             some: {
+              ...(classId ? { classId } : {}),
               class: {
                 studentAssignments: { some: { userId, endedAt: null } },
               },
@@ -1040,7 +1134,7 @@ export class ReportService {
         },
       }),
       this.prisma.examSession.aggregate({
-        where: { userId, ...fullyGradedSession },
+        where: { ...sessions, answers: fullyGradedSession.answers },
         _avg: { score: true },
       }),
     ]);
@@ -1050,6 +1144,134 @@ export class ReportService {
       upcomingExams,
       finishedExams,
       totalAverage: roundScore(averageResult._avg.score),
+    };
+  }
+
+  private async dashboardCharts(
+    sessions: Prisma.ExamSessionWhereInput,
+    byDay: boolean,
+  ) {
+    const rows = await this.prisma.examSession.findMany({
+      where: sessions,
+      orderBy: { finishedAt: 'asc' },
+      select: {
+        score: true,
+        finishedAt: true,
+        exam: { select: { id: true, title: true } },
+        answers: {
+          select: {
+            isCorrect: true,
+            gradeStatus: true,
+            examQuestion: {
+              select: {
+                id: true,
+                order: true,
+                question: { select: { theme: { select: { name: true } } } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const answers: Outcomes = { correct: 0, wrong: 0, pending: 0 };
+    const exams = new Map<string, ExamStats>();
+    const timeline = new Map<string, number>();
+    let pendingSubmissions = 0;
+
+    for (const row of rows) {
+      const exam: ExamStats = exams.get(row.exam.id) ?? {
+        examId: row.exam.id,
+        title: row.exam.title,
+        hasPending: false,
+        scores: [],
+        questions: new Map(),
+      };
+      exams.set(row.exam.id, exam);
+
+      let sessionPending = false;
+      for (const answer of row.answers) {
+        const outcome =
+          answer.gradeStatus === GradeStatus.PENDING
+            ? 'pending'
+            : answer.isCorrect
+              ? 'correct'
+              : 'wrong';
+        const { id, order, question } = answer.examQuestion;
+        const stats = exam.questions.get(id) ?? {
+          order,
+          theme: question.theme.name,
+          correct: 0,
+          wrong: 0,
+          pending: 0,
+        };
+        stats[outcome] += 1;
+        answers[outcome] += 1;
+        exam.questions.set(id, stats);
+        if (outcome === 'pending') sessionPending = true;
+      }
+
+      if (sessionPending) {
+        exam.hasPending = true;
+        pendingSubmissions += 1;
+      }
+      if (row.score !== null) exam.scores.push(row.score);
+
+      if (row.finishedAt) {
+        const label = row.finishedAt.toLocaleDateString('pt-BR', {
+          ...(byDay
+            ? { day: '2-digit', month: '2-digit' }
+            : { month: '2-digit', year: 'numeric' }),
+          timeZone: TIME_ZONE,
+        });
+        timeline.set(label, (timeline.get(label) ?? 0) + 1);
+      }
+    }
+
+    const recentExams = [...exams.values()].slice(-MAX_EXAMS_IN_CHART);
+    const graded = answers.correct + answers.wrong;
+
+    return {
+      hitRate: graded ? Math.round((answers.correct / graded) * 100) : null,
+      pendingSubmissions,
+      answers,
+      scoresByExam: recentExams
+        .filter((exam) => !exam.hasPending && exam.scores.length > 0)
+        .map((exam) => ({
+          examId: exam.examId,
+          title: exam.title,
+          average:
+            Math.round(
+              (exam.scores.reduce((sum, score) => sum + score, 0) /
+                exam.scores.length) *
+                100,
+            ) / 100,
+        })),
+      questionsByExam: recentExams.map((exam) => {
+        const questions = [...exam.questions.values()]
+          .sort((a, b) => a.order - b.order)
+          .map(({ theme, correct, wrong, pending }, index) => ({
+            number: index + 1,
+            theme,
+            correct,
+            wrong,
+            pending,
+          }));
+        return {
+          examId: exam.examId,
+          title: exam.title,
+          answers: {
+            correct: questions.reduce((sum, q) => sum + q.correct, 0),
+            wrong: questions.reduce((sum, q) => sum + q.wrong, 0),
+            pending: questions.reduce((sum, q) => sum + q.pending, 0),
+          },
+          questions,
+        };
+      }),
+      timeline: [...timeline].map(([label, submissions]) => ({
+        label,
+        submissions,
+      })),
     };
   }
 }
