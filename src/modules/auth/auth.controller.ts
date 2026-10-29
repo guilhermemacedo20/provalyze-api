@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import {
+  AcceptTermsDto,
   LoginDto,
   ForgotPasswordDto,
   ResetPasswordDto,
@@ -37,6 +38,15 @@ export class AuthController {
   @Post('/register')
   registerUser(@Body() registerUser: RegisterDto) {
     return this.authService.registerUser(registerUser);
+  }
+
+  @Post('accept-terms')
+  @UseGuards(JwtAuthGuard)
+  acceptTerms(
+    @Req() req: { user: { id: string } },
+    @Body() _body: AcceptTermsDto,
+  ) {
+    return this.authService.acceptTerms(req.user);
   }
 
   @Get('me')
