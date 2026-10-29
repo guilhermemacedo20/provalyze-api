@@ -1,6 +1,18 @@
 import { Role } from '@prisma/client';
 import { Transform } from 'class-transformer';
-import { IsEmail, IsEnum, IsString, Length, MinLength } from 'class-validator';
+import {
+  Equals,
+  IsEmail,
+  IsEnum,
+  IsString,
+  Length,
+  MinLength,
+  IsBoolean,
+  IsOptional,
+} from 'class-validator';
+
+const TERMS_MESSAGE =
+  'É necessário aceitar os Termos de Uso e a Política de Privacidade.';
 
 export class LoginDto {
   @Transform(({ value }: { value: unknown }) => {
@@ -44,6 +56,10 @@ export class ResetPasswordDto {
 
   @IsString()
   newPassword!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  acceptTerms?: boolean;
 }
 
 export class ChangePasswordDto {
@@ -82,4 +98,12 @@ export class RegisterDto {
 
   @IsEnum(Role)
   role!: Role;
+
+  @Equals(true, { message: TERMS_MESSAGE })
+  acceptTerms!: boolean;
+}
+
+export class AcceptTermsDto {
+  @Equals(true, { message: TERMS_MESSAGE })
+  acceptTerms!: boolean;
 }
