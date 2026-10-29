@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -166,9 +167,22 @@ export class UsersService {
     }
 
     if (existing.role === Role.ADMIN || existing.role === Role.COORDINATOR) {
-      return this.prisma.user.delete({
-        where: { id },
-      });
+      try {
+        return await this.prisma.user.delete({
+          where: { id },
+          select: { id: true },
+        });
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2003'
+        ) {
+          throw new ConflictException(
+            'Esse usuário possui vínculos com turmas, temas, questões ou provas e não pode ser apagado.',
+          );
+        }
+        throw error;
+      }
     }
 
     return this.prisma.user.update({
@@ -178,6 +192,7 @@ export class UsersService {
         email: `removido-${id}@anon.provalyze.local`,
         anonymizedAt: new Date(),
       },
+      select: { id: true },
     });
   }
 }

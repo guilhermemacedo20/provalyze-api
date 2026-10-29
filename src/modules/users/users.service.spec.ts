@@ -33,6 +33,7 @@ describe('UsersService', () => {
         email: 'removido-1@anon.provalyze.local',
         anonymizedAt: expect.any(Date),
       },
+      select: { id: true },
     });
 
     expect(prismaMock.user.count).not.toHaveBeenCalled();
