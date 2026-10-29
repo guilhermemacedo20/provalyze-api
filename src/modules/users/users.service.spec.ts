@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { UsersService } from './users.service';
@@ -32,6 +32,8 @@ describe('UsersService', () => {
         name: 'Usuário removido',
         email: 'removido-1@anon.provalyze.local',
         anonymizedAt: expect.any(Date),
+        password: null,
+        registrationNumber: null,
       },
     });
 
@@ -122,5 +124,106 @@ describe('UsersService', () => {
       where: { role: Role.ADMIN, anonymizedAt: null },
     });
     expect(prismaMock.user.delete).toHaveBeenCalled();
+  });
+
+  describe('exclusão de aluno', () => {
+    const student = { id: 's1', name: 'Maria Souza', role: Role.STUDENT };
+    const studentReq = { user: { id: 's1', role: Role.STUDENT } };
+
+    beforeEach(() => {
+      prismaMock.user.findUnique.mockResolvedValue(student);
+    });
+
+    it('apaga fisicamente o aluno sem nenhuma prova realizada', async () => {
+      prismaMock.examSession.count.mockResolvedValue(0);
+
+      const result = await service.deleteUser(studentReq, 's1');
+
+      expect(result).toEqual({ id: 's1', anonymized: false });
+      expect(prismaMock.studentAssignment.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 's1' },
+      });
+      expect(prismaMock.passwordResetToken.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 's1' },
+      });
+      expect(prismaMock.user.delete).toHaveBeenCalledWith({
+        where: { id: 's1' },
+      });
+      expect(prismaMock.user.update).not.toHaveBeenCalled();
+      expect(prismaMock.pedagogicalReport.update).not.toHaveBeenCalled();
+    });
+
+    it('anonimiza o aluno com prova realizada e mantém sessões e respostas', async () => {
+      prismaMock.examSession.count.mockResolvedValue(2);
+      prismaMock.studentAssignment.findMany.mockResolvedValue([
+        { classId: 'c1' },
+        { classId: 'c2' },
+      ]);
+      prismaMock.pedagogicalReport.findMany.mockResolvedValue([
+        {
+          id: 'r1',
+          content: {
+            average: 7,
+            students: [
+              { name: 'Maria Souza', exams: [{ title: 'P1', score: 8 }] },
+              { name: 'João Lima', exams: [{ title: 'P1', score: 6 }] },
+            ],
+          },
+        },
+        {
+          id: 'r2',
+          content: { students: [{ name: 'João Lima', exams: [] }] },
+        },
+        { id: 'r3', content: { gaps: [] } },
+      ]);
+
+      const result = await service.deleteUser(studentReq, 's1');
+
+      expect(result).toEqual({ id: 's1', anonymized: true });
+      expect(prismaMock.pedagogicalReport.findMany).toHaveBeenCalledWith({
+        where: { classId: { in: ['c1', 'c2'] } },
+        select: { id: true, content: true },
+      });
+      expect(prismaMock.pedagogicalReport.update).toHaveBeenCalledTimes(1);
+      expect(prismaMock.pedagogicalReport.update).toHaveBeenCalledWith({
+        where: { id: 'r1' },
+        data: {
+          content: {
+            average: 7,
+            students: [
+              { name: 'Usuário removido', exams: [{ title: 'P1', score: 8 }] },
+              { name: 'João Lima', exams: [{ title: 'P1', score: 6 }] },
+            ],
+          },
+        },
+      });
+      expect(prismaMock.studentAssignment.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 's1' },
+      });
+      expect(prismaMock.passwordResetToken.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 's1' },
+      });
+      expect(prismaMock.user.update).toHaveBeenCalledWith({
+        where: { id: 's1' },
+        data: {
+          name: 'Usuário removido',
+          email: 'removido-s1@anon.provalyze.local',
+          registrationNumber: null,
+          password: null,
+          anonymizedAt: expect.any(Date),
+        },
+      });
+      expect(prismaMock.user.delete).not.toHaveBeenCalled();
+      expect(prismaMock.examSession.deleteMany).not.toHaveBeenCalled();
+      expect(prismaMock.answer.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('não deixa um aluno excluir outro usuário', async () => {
+      await expect(
+        service.deleteUser(studentReq, 'outro'),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(prismaMock.user.delete).not.toHaveBeenCalled();
+      expect(prismaMock.user.update).not.toHaveBeenCalled();
+    });
   });
 });

@@ -171,13 +171,82 @@ export class UsersService {
       });
     }
 
-    return this.prisma.user.update({
-      where: { id },
-      data: {
-        name: 'Usuário removido',
-        email: `removido-${id}@anon.provalyze.local`,
-        anonymizedAt: new Date(),
-      },
+    if (existing.role === Role.STUDENT) {
+      return this.deleteStudent(existing);
+    }
+
+    return this.prisma.$transaction([
+      this.prisma.passwordResetToken.deleteMany({ where: { userId: id } }),
+      this.prisma.user.update({
+        where: { id },
+        data: {
+          name: 'Usuário removido',
+          email: `removido-${id}@anon.provalyze.local`,
+          registrationNumber: null,
+          password: null,
+          anonymizedAt: new Date(),
+        },
+      }),
+    ]);
+  }
+
+  private async deleteStudent(student: { id: string; name: string }) {
+    const { id } = student;
+    const sessions = await this.prisma.examSession.count({
+      where: { userId: id },
     });
+
+    if (sessions === 0) {
+      await this.prisma.$transaction([
+        this.prisma.studentAssignment.deleteMany({ where: { userId: id } }),
+        this.prisma.passwordResetToken.deleteMany({ where: { userId: id } }),
+        this.prisma.user.delete({ where: { id } }),
+      ]);
+      return { id, anonymized: false };
+    }
+
+    const assignments = await this.prisma.studentAssignment.findMany({
+      where: { userId: id },
+      select: { classId: true },
+    });
+    const reports = await this.prisma.pedagogicalReport.findMany({
+      where: { classId: { in: assignments.map((a) => a.classId) } },
+      select: { id: true, content: true },
+    });
+
+    const renamedReports = reports.flatMap((report) => {
+      const content = report.content as {
+        students?: { name: string }[];
+      } | null;
+      if (!content?.students?.some((s) => s.name === student.name)) {
+        return [];
+      }
+      const students = content.students.map((s) =>
+        s.name === student.name ? { ...s, name: 'Usuário removido' } : s,
+      );
+      return [
+        this.prisma.pedagogicalReport.update({
+          where: { id: report.id },
+          data: { content: { ...content, students } },
+        }),
+      ];
+    });
+
+    await this.prisma.$transaction([
+      ...renamedReports,
+      this.prisma.studentAssignment.deleteMany({ where: { userId: id } }),
+      this.prisma.passwordResetToken.deleteMany({ where: { userId: id } }),
+      this.prisma.user.update({
+        where: { id },
+        data: {
+          name: 'Usuário removido',
+          email: `removido-${id}@anon.provalyze.local`,
+          registrationNumber: null,
+          password: null,
+          anonymizedAt: new Date(),
+        },
+      }),
+    ]);
+    return { id, anonymized: true };
   }
 }
