@@ -94,10 +94,12 @@ describe('QuestionsService', () => {
       id: '1',
       statement: 'Quanto é 2 + 2?',
     });
+    prismaMock.examQuestion.findFirst.mockResolvedValue(null);
 
     await expect(service.listQuestion(request, '1')).resolves.toEqual({
       id: '1',
       statement: 'Quanto é 2 + 2?',
+      inExam: false,
     });
 
     expect(prismaMock.question.findFirst).toHaveBeenCalledWith({
