@@ -28,6 +28,7 @@ describe('QuestionsService', () => {
     logsMock,
   );
   const request = { user: { id: '1', role: 'TEACHER' } };
+  const owner = { user: { id: 't1', role: 'TEACHER' } };
   const student = { user: { id: 's1', role: 'STUDENT' } };
 
   beforeEach(() => {
@@ -302,7 +303,7 @@ describe('QuestionsService', () => {
   it('grava os bytes (não o base64) e devolve o caminho interno', async () => {
     prismaMock.questionImage.create.mockResolvedValue({ id: 'img1' });
 
-    const result = await service.upload(request, asDataUrl(png));
+    const result = await service.upload(owner, asDataUrl(png));
 
     expect(prismaMock.questionImage.create).toHaveBeenCalledWith({
       data: { userId: 't1', data: new Uint8Array(png) },
@@ -326,7 +327,7 @@ describe('QuestionsService', () => {
 
   it('devolve a data URL para o professor dono', async () => {
     prismaMock.questionImage.findUnique.mockResolvedValue(stored);
-    await expect(service.getImage(request, 'img1')).resolves.toEqual({
+    await expect(service.getImage(owner, 'img1')).resolves.toEqual({
       id: 'img1',
       image: asDataUrl(png),
     });

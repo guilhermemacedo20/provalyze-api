@@ -2,6 +2,7 @@ import request from 'supertest';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { cleanDatabase, createUser, loginAs } from './support/database';
 import { createTestApp } from './support/test-app';
+import { INestApplication } from '@nestjs/common';
 
 describe('Acadêmico (cursos, matérias e turmas) - integração (API + service + banco)', () => {
   let app: INestApplication;
@@ -79,7 +80,7 @@ describe('Acadêmico (cursos, matérias e turmas) - integração (API + service 
 
     // Assert
     expect(response.status).toBe(400);
-    expect(response.body.message).toContain('property ativo should not exist');
+    expect(response.body.message).toContain('O campo ativo não é permitido.');
     await expect(prisma.course.count()).resolves.toBe(0);
   });
 
@@ -111,7 +112,7 @@ describe('Acadêmico (cursos, matérias e turmas) - integração (API + service 
     expect(response.body.message).toContain('name should not be empty');
     await expect(prisma.course.count()).resolves.toBe(0);
   });
-  
+
   it('deveRetornar404AoBuscarCursoInexistente', async () => {
     // Act
     const response = await request(app.getHttpServer())

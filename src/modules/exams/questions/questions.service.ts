@@ -188,6 +188,13 @@ export class QuestionsService {
       },
     });
 
+    if (
+      updateQuestionDto.imageUrl !== undefined &&
+      updateQuestionDto.imageUrl !== existing.imageUrl
+    ) {
+      await this.removeImageIfUnused(user.id, existing.imageUrl);
+    }
+
     return updated;
   }
 
