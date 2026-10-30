@@ -53,11 +53,11 @@ npm run load-test:exam -- --dry-run --classId=xxx --examId=yyy --students=script
 
 ### Cenários
 
-| `--scenario` | Comportamento |
-|--------------|----------------|
-| `full` (padrão) | login + abrir + entregar |
-| `open` | login + abrir prova (carga de leitura/sessão) |
-| `login` | só login (carga mínima na autenticação) |
+| `--scenario`    | Comportamento                                 |
+| --------------- | --------------------------------------------- |
+| `full` (padrão) | login + abrir + entregar                      |
+| `open`          | login + abrir prova (carga de leitura/sessão) |
+| `login`         | só login (carga mínima na autenticação)       |
 
 Simular tempo entre abrir e entregar:
 
@@ -67,17 +67,17 @@ npm run load-test:exam -- ... --think-ms=30000
 
 ### Variáveis de ambiente
 
-| Variável | Equivalente |
-|----------|-------------|
-| `LOAD_TEST_BASE_URL` | `--base-url` |
-| `LOAD_TEST_CLASS_ID` | `--classId` |
-| `LOAD_TEST_EXAM_ID` | `--examId` |
-| `LOAD_TEST_STUDENTS_FILE` | `--students` |
-| `LOAD_TEST_CONCURRENCY` | `--concurrency` |
-| `LOAD_TEST_SCENARIO` | `--scenario` |
-| `LOAD_TEST_REPORT` | `--report` |
-| `LOAD_TEST_EVENTS` | `--events=true/false` ou `--no-events` |
-| `LOAD_TEST_EVENTS_MIN` / `LOAD_TEST_EVENTS_MAX` | `--events-min` / `--events-max` |
+| Variável                                        | Equivalente                            |
+| ----------------------------------------------- | -------------------------------------- |
+| `LOAD_TEST_BASE_URL`                            | `--base-url`                           |
+| `LOAD_TEST_CLASS_ID`                            | `--classId`                            |
+| `LOAD_TEST_EXAM_ID`                             | `--examId`                             |
+| `LOAD_TEST_STUDENTS_FILE`                       | `--students`                           |
+| `LOAD_TEST_CONCURRENCY`                         | `--concurrency`                        |
+| `LOAD_TEST_SCENARIO`                            | `--scenario`                           |
+| `LOAD_TEST_REPORT`                              | `--report`                             |
+| `LOAD_TEST_EVENTS`                              | `--events=true/false` ou `--no-events` |
+| `LOAD_TEST_EVENTS_MIN` / `LOAD_TEST_EVENTS_MAX` | `--events-min` / `--events-max`        |
 
 ## Interpretação para a turma
 
@@ -88,7 +88,7 @@ npm run load-test:exam -- ... --think-ms=30000
 
 - Não substitui monitoramento de CPU/RAM/Postgres; recomenda-se observar logs e `docker stats` durante o teste.
 - Questões dissertativas recebem texto fixo; correção por IA não é exercitada neste script.
-- Eventos anti-cola são aleatórios (2–8 por aluno por padrão); desligue com `LOAD_TEST_EVENTS=false` ou `--no-events`.
+- Eventos anti-cola são aleatórios (2/8 por aluno por padrão); desligue com `LOAD_TEST_EVENTS=false` ou `--no-events`.
 
 ---
 
@@ -96,12 +96,12 @@ npm run load-test:exam -- ... --think-ms=30000
 
 Edite `scripts/load-test/.env.load-test`:
 
-| Variável | O que colocar |
-|----------|----------------|
-| `LOAD_TEST_BASE_URL` | URL da API em PRD **com** `/api` no final. Ex.: se o front usa `NEXT_PUBLIC_API_URL=https://provalyze.seudominio.com/api`, use exatamente isso. |
-| `LOAD_TEST_CLASS_ID` | ID da turma (abaixo). |
-| `LOAD_TEST_EXAM_ID` | ID da prova (abaixo). |
-| `LOAD_TEST_CONCURRENCY` | `number` para a turma inteira, ou `100` se tiver 100 alunos no JSON. |
+| Variável                | O que colocar                                                                                                                                   |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `LOAD_TEST_BASE_URL`    | URL da API em PRD **com** `/api` no final. Ex.: se o front usa `NEXT_PUBLIC_API_URL=https://provalyze.seudominio.com/api`, use exatamente isso. |
+| `LOAD_TEST_CLASS_ID`    | ID da turma (abaixo).                                                                                                                           |
+| `LOAD_TEST_EXAM_ID`     | ID da prova (abaixo).                                                                                                                           |
+| `LOAD_TEST_CONCURRENCY` | `number` para a turma inteira, ou `100` se tiver 100 alunos no JSON.                                                                            |
 
 O `exam-load.mjs` lê `.env.load-test` automaticamente; não precisa exportar variável no PowerShell, a menos que queira sobrescrever algo pontual:
 
