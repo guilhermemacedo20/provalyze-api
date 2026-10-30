@@ -9,6 +9,7 @@ import {
   ExamStatus,
   GradeStatus,
   Prisma,
+  QuestionType,
   ReportAnalysisType,
   Role,
   SessionStatus,
@@ -736,18 +737,30 @@ export class ReportService {
         },
         select: {
           score: true,
+          isCorrect: true,
           examQuestion: {
             select: {
               points: true,
-              question: { select: { theme: { select: { name: true } } } },
+              question: {
+                select: { type: true, theme: { select: { name: true } } },
+              },
             },
           },
         },
       }),
     ]);
 
+    const outcomes = {
+      objective: { correct: 0, wrong: 0 },
+      essay: { correct: 0, wrong: 0 },
+    };
     const totals = new Map<string, { score: number; points: number }>();
     for (const answer of answers) {
+      const kind =
+        answer.examQuestion.question.type === QuestionType.OPEN_ENDED
+          ? 'essay'
+          : 'objective';
+      outcomes[kind][answer.isCorrect ? 'correct' : 'wrong'] += 1;
       const name = answer.examQuestion.question.theme.name;
       const current = totals.get(name) ?? { score: 0, points: 0 };
       current.score += answer.score;
@@ -770,6 +783,7 @@ export class ReportService {
       totalAverage: roundScore(averageResult._avg.score),
       finishedExams: exams.length,
       themes,
+      answers: outcomes,
       exams: exams.map((session) => ({
         title: session.exam.title,
         subjectName: schoolClass.subject.name,

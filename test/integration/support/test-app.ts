@@ -1,4 +1,5 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
+import { createValidationPipe } from 'src/common/pipes/validation.pipe';
 import { Test } from '@nestjs/testing';
 import { AppModule } from 'src/app.module';
 import { MailService } from 'src/infra/mail/mail.service';
@@ -9,7 +10,7 @@ export const mailServiceMock = {
   sendPasswordReset: jest.fn(),
 };
 
-// Sobe a aplicação inteira (controllers, services, guards, Prisma) com a mesma configuração do main.ts. 
+// Sobe a aplicação inteira (controllers, services, guards, Prisma) com a mesma configuração do main.ts.
 export async function createTestApp(): Promise<{
   app: INestApplication;
   prisma: PrismaService;
@@ -21,13 +22,7 @@ export async function createTestApp(): Promise<{
 
   const app = moduleRef.createNestApplication();
   app.setGlobalPrefix('api');
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      transform: true,
-      forbidNonWhitelisted: true,
-    }),
-  );
+  app.useGlobalPipes(createValidationPipe());
   await app.init();
 
   return { app, prisma: app.get(PrismaService) };

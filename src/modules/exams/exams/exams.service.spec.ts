@@ -757,10 +757,204 @@ describe('ExamsService', () => {
       expect(result.questions[0]).toMatchObject({
         isCorrect: true,
         gradeStatus: GradeStatus.AUTO,
+        number: 1,
+        statement: '2+2?',
+        maxScore: 10,
+        teacherFeedback: null,
+        studentAnswer: 'A) 4',
+        correctAnswer: 'A) 4',
       });
     }
 
     expect(prismaMock.$transaction).toHaveBeenCalled();
+  });
+
+  it('submitExam devolve a alternativa correta quando o aluno erra', async () => {
+    const startedAt = new Date();
+    const startsAt = new Date('2020-01-01T10:00:00.000Z');
+    const endsAt = new Date('2030-06-01T12:00:00.000Z');
+    prismaMock.class.findFirst.mockResolvedValue({ id: 'class-1' });
+    prismaMock.examAssignment.findFirst.mockResolvedValue({
+      exam: {
+        id: 'exam-1',
+        title: 'Prova',
+        startsAt,
+        endsAt,
+        status: ExamStatus.PUBLISHED,
+        durationMinutes: 60,
+        targetScore: 10,
+      },
+    });
+    prismaMock.examSession.findFirst.mockResolvedValue({
+      id: 'session-1',
+      status: SessionStatus.STARTED,
+      startedAt,
+    });
+    prismaMock.examQuestion.findMany.mockResolvedValue([
+      {
+        id: 'eq-1',
+        questionId: 'q-1',
+        order: 0,
+        points: 10,
+        question: {
+          type: QuestionType.MULTIPLE_CHOICE,
+          correctOption: 'A',
+          statement: '2+2?',
+          theme: { name: 'Aritmética' },
+          questionOptions: [
+            { id: 'opt-1', label: 'A', text: '4' },
+            { id: 'opt-2', label: 'B', text: '5' },
+          ],
+        },
+      },
+    ]);
+    prismaMock.answer.createMany.mockResolvedValue({ count: 1 });
+    prismaMock.examSession.update.mockResolvedValue({});
+
+    const result = await service.submitExam(
+      { user: { id: 'student-1' } },
+      'class-1',
+      'exam-1',
+      {
+        answers: [{ examQuestionId: 'eq-1', optionId: 'opt-2' }],
+      },
+    );
+
+    expect(result).toHaveProperty('status', SessionStatus.FINISHED);
+
+    if ('questions' in result) {
+      expect(result.score).toBe(0);
+      expect(result.questions[0]).toMatchObject({
+        isCorrect: false,
+        studentAnswer: 'B) 5',
+        correctAnswer: 'A) 4',
+      });
+    }
+  });
+
+  it('submitExam devolve a resposta escrita e sem alternativa correta na dissertativa', async () => {
+    const startedAt = new Date();
+    const startsAt = new Date('2020-01-01T10:00:00.000Z');
+    const endsAt = new Date('2030-06-01T12:00:00.000Z');
+    prismaMock.class.findFirst.mockResolvedValue({ id: 'class-1' });
+    prismaMock.examAssignment.findFirst.mockResolvedValue({
+      exam: {
+        id: 'exam-1',
+        title: 'Prova',
+        startsAt,
+        endsAt,
+        status: ExamStatus.PUBLISHED,
+        durationMinutes: 60,
+        targetScore: 10,
+      },
+    });
+    prismaMock.examSession.findFirst.mockResolvedValue({
+      id: 'session-1',
+      status: SessionStatus.STARTED,
+      startedAt,
+    });
+    prismaMock.examQuestion.findMany.mockResolvedValue([
+      {
+        id: 'eq-1',
+        questionId: 'q-1',
+        order: 0,
+        points: 10,
+        question: {
+          type: QuestionType.OPEN_ENDED,
+          correctOption: null,
+          statement: 'Explique recursão',
+          theme: { name: 'Algoritmos' },
+          questionOptions: [],
+        },
+      },
+    ]);
+    prismaMock.answer.createMany.mockResolvedValue({ count: 1 });
+    prismaMock.examSession.update.mockResolvedValue({});
+
+    const result = await service.submitExam(
+      { user: { id: 'student-1' } },
+      'class-1',
+      'exam-1',
+      {
+        answers: [{ examQuestionId: 'eq-1', content: '  Função que se chama  ' }],
+      },
+    );
+
+    if ('questions' in result) {
+      expect(result.questions[0]).toMatchObject({
+        gradeStatus: GradeStatus.PENDING,
+        statement: 'Explique recursão',
+        studentAnswer: 'Função que se chama',
+        correctAnswer: null,
+        teacherFeedback: null,
+      });
+    }
+  });
+
+  it('getStudentExam devolve a alternativa correta na revisão da prova finalizada', async () => {
+    const startsAt = new Date('2020-01-01T10:00:00.000Z');
+    const endsAt = new Date('2030-06-01T12:00:00.000Z');
+    prismaMock.class.findFirst.mockResolvedValue({ id: 'class-1' });
+    prismaMock.examAssignment.findFirst.mockResolvedValue({
+      exam: {
+        id: 'exam-1',
+        title: 'Prova',
+        startsAt,
+        endsAt,
+        status: ExamStatus.PUBLISHED,
+        durationMinutes: 60,
+        targetScore: 10,
+      },
+    });
+    prismaMock.examSession.findFirst.mockResolvedValue({
+      id: 'session-1',
+      status: SessionStatus.FINISHED,
+      score: 0,
+      startedAt: new Date('2030-06-01T10:00:00.000Z'),
+      finishedAt: new Date('2030-06-01T10:30:00.000Z'),
+    });
+    prismaMock.answer.findMany.mockResolvedValue([
+      {
+        examQuestionId: 'eq-1',
+        content: 'B',
+        isCorrect: false,
+        score: 0,
+        gradeStatus: GradeStatus.AUTO,
+        teacherFeedback: null,
+        examQuestion: {
+          order: 0,
+          points: 10,
+          question: {
+            type: QuestionType.MULTIPLE_CHOICE,
+            statement: '2+2?',
+            correctOption: 'A',
+            theme: { name: 'Aritmética' },
+            questionOptions: [
+              { label: 'A', text: '4' },
+              { label: 'B', text: '5' },
+            ],
+          },
+        },
+      },
+    ]);
+    prismaMock.examQuestion.findMany.mockResolvedValue([{ points: 10 }]);
+
+    const result = await service.getStudentExam(
+      { user: { id: 'student-1' } },
+      'class-1',
+      'exam-1',
+    );
+
+    const { review } = result as unknown as {
+      review: Record<string, unknown>[];
+    };
+
+    expect(review[0]).toMatchObject({
+      studentAnswer: 'B) 5',
+      correctAnswer: 'A) 4',
+      maxScore: 10,
+    });
+
   });
 
   it('submitExam retorna indisponibilidade', async () => {

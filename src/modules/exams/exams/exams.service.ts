@@ -431,6 +431,12 @@ export class ExamsService {
         score: row.score,
         gradeStatus: row.gradeStatus,
         themeName: row.themeName,
+        number: row.number,
+        statement: row.statement,
+        maxScore: row.maxScore,
+        teacherFeedback: null,
+        studentAnswer: row.studentAnswer,
+        correctAnswer: row.correctAnswer,
       })),
       finishedAt,
     };
@@ -682,7 +688,7 @@ export class ExamsService {
       0,
     );
 
-    return examQuestions.map((examQuestion) => {
+    return examQuestions.map((examQuestion, index) => {
       const answer = submitted.get(examQuestion.id);
       const question = examQuestion.question;
 
@@ -691,16 +697,27 @@ export class ExamsService {
           (examQuestion.points / (totalPoints || 0)) * exam.targetScore * 100,
         ) / 100;
 
+      const details = {
+        number: index + 1,
+        statement: question.statement,
+        maxScore: weightedPoints,
+        correctAnswer: this.correctAnswer(question),
+      };
+
       if (question.type !== QuestionType.MULTIPLE_CHOICE) {
+        const content = answer?.content?.trim() ?? '';
+
         return {
           sessionId,
           examQuestionId: examQuestion.id,
-          content: answer?.content?.trim() ?? '',
+          content,
           isCorrect: false,
           score: 0,
           gradeStatus: GradeStatus.PENDING,
           type: question.type,
           themeName: question.theme.name,
+          studentAnswer: content,
+          ...details,
         };
       }
 
@@ -727,8 +744,26 @@ export class ExamsService {
         gradeStatus: GradeStatus.AUTO,
         type: question.type,
         themeName: question.theme.name,
+        studentAnswer: option ? `${option.label}) ${option.text}` : '',
+        ...details,
       };
     });
+  }
+
+  private correctAnswer(question: {
+    type: QuestionType | null;
+    correctOption: string | null;
+    questionOptions: { label: string; text: string }[];
+  }) {
+    if (question.type !== QuestionType.MULTIPLE_CHOICE) {
+      return null;
+    }
+
+    const correct = question.questionOptions.find(
+      (option) => option.label === question.correctOption,
+    );
+
+    return correct ? `${correct.label}) ${correct.text}` : null;
   }
 
   private async finishedExam(exam: Exam, session: ExamSession) {
@@ -742,6 +777,7 @@ export class ExamsService {
                 select: {
                   type: true,
                   statement: true,
+                  correctOption: true,
                   theme: { select: { name: true } },
                   questionOptions: { select: { label: true, text: true } },
                 },
@@ -798,6 +834,7 @@ export class ExamsService {
                 ? `${chosen.label}) ${chosen.text}`
                 : ''
               : answer.content,
+          correctAnswer: this.correctAnswer(question),
         };
       }),
     });
@@ -1326,7 +1363,7 @@ export class ExamsService {
       (total, item) => total + item.points,
       0,
     );
-    
+
     const answerByQuestion = new Map(
       session.answers.map((a) => [a.examQuestionId, a]),
     );

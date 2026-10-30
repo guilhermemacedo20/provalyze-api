@@ -5,6 +5,7 @@ import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { prismaMock } from 'src/test/mocks/prisma.mock';
 import { logsMock } from 'src/test/mocks/logs.mock';
 import { mailMock } from 'src/test/mocks/mail.mock';
+import { TERMS_VERSION } from 'src/common/constants/terms';
 import { AuthService } from './auth.service';
 import { Role } from '@prisma/client';
 
@@ -29,12 +30,15 @@ describe('AuthService', () => {
   });
 
   it('should authenticate', async () => {
+    const acceptedAt = new Date('2026-10-28T12:00:00.000Z');
     prismaMock.user.findUnique.mockResolvedValue({
       id: '1',
       name: 'Ana',
       email: 'ana@escola.edu.br',
       role: 'STUDENT',
       registrationNumber: null,
+      termsAcceptedAt: acceptedAt,
+      termsVersion: TERMS_VERSION,
       password: 'passwordHash',
     });
     jest.mocked(bcrypt.compare).mockResolvedValue(true as never);
@@ -50,6 +54,8 @@ describe('AuthService', () => {
         email: 'ana@escola.edu.br',
         role: 'STUDENT',
         registrationNumber: null,
+        termsAcceptedAt: acceptedAt,
+        termsVersion: TERMS_VERSION,
       },
     });
 
@@ -58,6 +64,29 @@ describe('AuthService', () => {
       email: 'ana@escola.edu.br',
       role: 'STUDENT',
     });
+  });
+
+  it('should return null terms fields at login when the user has not accepted yet', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: '2',
+      name: 'Bia',
+      email: 'bia@escola.edu.br',
+      role: 'TEACHER',
+      registrationNumber: null,
+      termsAcceptedAt: null,
+      termsVersion: null,
+      password: 'passwordHash',
+    });
+    jest.mocked(bcrypt.compare).mockResolvedValue(true as never);
+    jwt.sign.mockReturnValue('token');
+
+    const result = await service.loginUser({
+      email: 'bia@escola.edu.br',
+      password: 'Senha123',
+    });
+
+    expect(result.user.termsAcceptedAt).toBeNull();
+    expect(result.user.termsVersion).toBeNull();
   });
 
   it('should reject login with an invalid password', async () => {
@@ -146,6 +175,7 @@ describe('AuthService', () => {
       email: 'prof@escola.edu.br',
       password: 'Senha123',
       role: Role.TEACHER,
+      acceptTerms: true,
     });
 
     await expect(register).rejects.toBeInstanceOf(BadRequestException);
@@ -153,13 +183,204 @@ describe('AuthService', () => {
     expect(prismaMock.user.create).not.toHaveBeenCalled();
   });
 
+  it('should save the terms acceptance date and version on register', async () => {
+    prismaMock.user.findUnique.mockResolvedValue(null);
+    jest.mocked(bcrypt.hash).mockResolvedValue('hashed' as never);
+    prismaMock.user.create.mockResolvedValue({
+      id: '9',
+      name: 'Carla',
+      email: 'carla@escola.edu.br',
+    });
+
+    await expect(
+      service.registerUser({
+        name: 'Carla',
+        email: 'carla@escola.edu.br',
+        password: 'Senha123',
+        role: Role.STUDENT,
+        acceptTerms: true,
+      }),
+    ).resolves.toEqual({
+      user: { id: '9', name: 'Carla', email: 'carla@escola.edu.br' },
+    });
+
+    expect(prismaMock.user.create).toHaveBeenCalledWith({
+      data: {
+        email: 'carla@escola.edu.br',
+        name: 'Carla',
+        role: Role.STUDENT,
+        password: 'hashed',
+        termsAcceptedAt: expect.any(Date),
+        termsVersion: TERMS_VERSION,
+      },
+    });
+    expect(logsMock.audit).toHaveBeenCalledWith(
+      `Accept terms on register (v${TERMS_VERSION})`,
+      '9',
+    );
+  });
+
+  it('should record the terms acceptance on first access', async () => {
+    const acceptedAt = new Date('2026-10-28T12:00:00.000Z');
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: '1',
+      anonymizedAt: null,
+      termsAcceptedAt: null,
+      termsVersion: null,
+    });
+    prismaMock.user.update.mockResolvedValue({
+      termsAcceptedAt: acceptedAt,
+      termsVersion: TERMS_VERSION,
+    });
+
+    await expect(service.acceptTerms({ id: '1' })).resolves.toEqual({
+      termsAcceptedAt: acceptedAt,
+      termsVersion: TERMS_VERSION,
+    });
+
+    expect(prismaMock.user.update).toHaveBeenCalledWith({
+      where: { id: '1' },
+      data: { termsAcceptedAt: expect.any(Date), termsVersion: TERMS_VERSION },
+      select: { termsAcceptedAt: true, termsVersion: true },
+    });
+    expect(logsMock.audit).toHaveBeenCalledWith(
+      `Accept terms on first access (v${TERMS_VERSION})`,
+      '1',
+    );
+  });
+
+  it('should keep the original acceptance when the current version was already accepted', async () => {
+    const acceptedAt = new Date('2026-10-01T12:00:00.000Z');
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: '1',
+      anonymizedAt: null,
+      termsAcceptedAt: acceptedAt,
+      termsVersion: TERMS_VERSION,
+    });
+
+    await expect(service.acceptTerms({ id: '1' })).resolves.toEqual({
+      termsAcceptedAt: acceptedAt,
+      termsVersion: TERMS_VERSION,
+    });
+
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+
+  it('should reject the terms acceptance for unknown or anonymized users', async () => {
+    prismaMock.user.findUnique.mockResolvedValue(null);
+    await expect(service.acceptTerms({ id: '1' })).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: '1',
+      anonymizedAt: new Date(),
+    });
+    await expect(service.acceptTerms({ id: '1' })).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+
+  describe('resetPassword', () => {
+    const resetData = {
+      email: 'ana@escola.edu.br',
+      code: '123456',
+      newPassword: 'NovaSenha123',
+    };
+
+    const mockValidResetToken = () => {
+      prismaMock.passwordResetToken.findUnique.mockResolvedValue({
+        userId: '1',
+        code: 'codeHash',
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+        usedAt: null,
+      });
+      prismaMock.passwordResetToken.update.mockResolvedValue({});
+      prismaMock.user.update.mockResolvedValue({});
+      jest.mocked(bcrypt.compare).mockResolvedValue(true as never);
+      jest.mocked(bcrypt.hash).mockResolvedValue('newPasswordHash' as never);
+    };
+
+    it('should require accepting the terms when the account has not accepted yet', async () => {
+      prismaMock.user.findUnique.mockResolvedValue({
+        id: '1',
+        termsAcceptedAt: null,
+        termsVersion: null,
+      });
+      mockValidResetToken();
+
+      await expect(service.resetPassword(resetData)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      await expect(
+        service.resetPassword({ ...resetData, acceptTerms: false }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(prismaMock.user.update).not.toHaveBeenCalled();
+      expect(prismaMock.passwordResetToken.update).not.toHaveBeenCalled();
+    });
+
+    it('should save the terms acceptance together with the new password', async () => {
+      prismaMock.user.findUnique.mockResolvedValue({
+        id: '1',
+        termsAcceptedAt: null,
+        termsVersion: null,
+      });
+      mockValidResetToken();
+
+      await expect(
+        service.resetPassword({ ...resetData, acceptTerms: true }),
+      ).resolves.toEqual({ message: 'Senha redefinida com sucesso.' });
+
+      expect(prismaMock.user.update).toHaveBeenCalledWith({
+        where: { id: '1' },
+        data: {
+          password: 'newPasswordHash',
+          termsAcceptedAt: expect.any(Date),
+          termsVersion: TERMS_VERSION,
+        },
+      });
+      expect(logsMock.audit).toHaveBeenCalledWith(
+        `Accept terms on password reset (v${TERMS_VERSION})`,
+        '1',
+      );
+      expect(logsMock.audit).toHaveBeenCalledWith('Reset password', '1');
+    });
+
+    it('should keep the original acceptance when the account already accepted', async () => {
+      prismaMock.user.findUnique.mockResolvedValue({
+        id: '1',
+        termsAcceptedAt: new Date('2026-10-01T12:00:00.000Z'),
+        termsVersion: TERMS_VERSION,
+      });
+      mockValidResetToken();
+
+      await expect(service.resetPassword(resetData)).resolves.toEqual({
+        message: 'Senha redefinida com sucesso.',
+      });
+
+      expect(prismaMock.user.update).toHaveBeenCalledWith({
+        where: { id: '1' },
+        data: { password: 'newPasswordHash' },
+      });
+      expect(logsMock.audit).not.toHaveBeenCalledWith(
+        `Accept terms on password reset (v${TERMS_VERSION})`,
+        '1',
+      );
+    });
+  });
+
   it('should return the logged user', async () => {
+    const acceptedAt = new Date('2026-10-28T12:00:00.000Z');
     prismaMock.user.findUnique.mockResolvedValue({
       id: '1',
       name: 'Ana',
       email: 'ana@escola.edu.br',
       role: 'STUDENT',
       registrationNumber: null,
+      termsAcceptedAt: acceptedAt,
+      termsVersion: TERMS_VERSION,
     });
 
     await expect(
@@ -170,6 +391,8 @@ describe('AuthService', () => {
       email: 'ana@escola.edu.br',
       role: 'STUDENT',
       registrationNumber: null,
+      termsAcceptedAt: acceptedAt,
+      termsVersion: TERMS_VERSION,
     });
 
     expect(prismaMock.user.findUnique).toHaveBeenCalledWith({
@@ -180,6 +403,8 @@ describe('AuthService', () => {
         email: true,
         role: true,
         registrationNumber: true,
+        termsAcceptedAt: true,
+        termsVersion: true,
         password: false,
       },
     });

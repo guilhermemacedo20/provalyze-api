@@ -35,6 +35,7 @@ describe('UsersService', () => {
         password: null,
         registrationNumber: null,
       },
+      select: { id: true },
     });
 
     expect(prismaMock.user.count).not.toHaveBeenCalled();

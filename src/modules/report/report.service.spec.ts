@@ -602,9 +602,42 @@ describe('ReportService', () => {
     prismaMock.answer.findMany.mockResolvedValue([
       {
         score: 2,
+        isCorrect: true,
         examQuestion: {
           points: 2,
-          question: { theme: { name: 'Lógica' } },
+          question: { type: 'MULTIPLE_CHOICE', theme: { name: 'Lógica' } },
+        },
+      },
+      {
+        score: 0,
+        isCorrect: false,
+        examQuestion: {
+          points: 2,
+          question: { type: 'MULTIPLE_CHOICE', theme: { name: 'Lógica' } },
+        },
+      },
+      {
+        score: 3,
+        isCorrect: true,
+        examQuestion: {
+          points: 3,
+          question: { type: 'OPEN_ENDED', theme: { name: 'Lógica' } },
+        },
+      },
+      {
+        score: 0,
+        isCorrect: false,
+        examQuestion: {
+          points: 3,
+          question: { type: 'OPEN_ENDED', theme: { name: 'Lógica' } },
+        },
+      },
+      {
+        score: 0,
+        isCorrect: false,
+        examQuestion: {
+          points: 3,
+          question: { type: 'OPEN_ENDED', theme: { name: 'Lógica' } },
         },
       },
     ]);
@@ -620,7 +653,11 @@ describe('ReportService', () => {
       className: 'Turma A',
       totalAverage: 8.5,
       finishedExams: 1,
-      themes: [{ name: 'Lógica', percent: 100 }],
+      themes: [{ name: 'Lógica', percent: 38 }],
+      answers: {
+        objective: { correct: 1, wrong: 1 },
+        essay: { correct: 1, wrong: 2 },
+      },
     });
   });
 
