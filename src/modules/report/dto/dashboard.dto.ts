@@ -19,4 +19,8 @@ export class DashboardQueryDto {
   @IsOptional()
   @IsString()
   classId?: string;
+
+  @IsOptional()
+  @IsString()
+  subjectId?: string;
 }

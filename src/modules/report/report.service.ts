@@ -134,13 +134,20 @@ export class ReportService {
         : isStudent
           ? { studentAssignments: { some: { userId: user.id, endedAt: null } } }
           : {},
-      select: { id: true, name: true, subject: { select: { name: true } } },
+      select: {
+        id: true,
+        name: true,
+        subject: { select: { id: true, name: true } },
+      },
       orderBy: { name: 'asc' },
     });
 
-    const { classId } = query;
+    const { classId, subjectId } = query;
     if (classId && !classes.some((c) => c.id === classId)) {
       throw new ForbiddenException('Você não tem acesso a essa turma');
+    }
+    if (subjectId && !classes.some((c) => c.subject.id === subjectId)) {
+      throw new ForbiddenException('Você não tem acesso a essa matéria');
     }
 
     const period = resolvePeriod(query);
@@ -156,7 +163,16 @@ export class ReportService {
         : {}),
       exam: {
         ...(isTeacher ? { userId: user.id } : {}),
-        ...(classId ? { assignments: { some: { classId } } } : {}),
+        ...(classId || subjectId
+          ? {
+              assignments: {
+                some: {
+                  ...(classId ? { classId } : {}),
+                  ...(subjectId ? { class: { subjectId } } : {}),
+                },
+              },
+            }
+          : {}),
       },
     };
 
@@ -165,7 +181,7 @@ export class ReportService {
         ? this.adminDashboard(sessions)
         : isTeacher
           ? this.teacherDashboard(user.id, period, sessions, classId)
-          : this.studentDashboard(user.id, sessions, classId),
+          : this.studentDashboard(user.id, sessions, classId, subjectId),
       this.dashboardCharts(sessions, query.period === 'month'),
     ]);
 
@@ -175,6 +191,7 @@ export class ReportService {
       classes: classes.map((c) => ({
         id: c.id,
         name: c.name,
+        subjectId: c.subject.id,
         subjectName: c.subject.name,
       })),
     };
@@ -1130,6 +1147,7 @@ export class ReportService {
     userId: string,
     sessions: Prisma.ExamSessionWhereInput,
     classId?: string,
+    subjectId?: string,
   ) {
     const [finishedExams, upcomingExams, averageResult] = await Promise.all([
       this.prisma.examSession.count({ where: sessions }),
@@ -1140,6 +1158,7 @@ export class ReportService {
             some: {
               ...(classId ? { classId } : {}),
               class: {
+                ...(subjectId ? { subjectId } : {}),
                 studentAssignments: { some: { userId, endedAt: null } },
               },
             },
