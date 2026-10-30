@@ -79,8 +79,6 @@ type ExamStats = {
   questions: Map<string, Outcomes & { order: number; theme: string }>;
 };
 
-const pad = (value: number) => String(value).padStart(2, '0');
-
 export function resolvePeriod(
   query: DashboardQueryDto,
   now = new Date(),
@@ -95,16 +93,18 @@ export function resolvePeriod(
     };
   }
 
-  if (query.period === 'month') {
-    const [year, month] = (query.month ?? today.slice(0, 7))
-      .split('-')
-      .map(Number);
-    const from = new Date(`${year}-${pad(month)}-01T00:00:00-03:00`);
-    const next = month === 12 ? `${year + 1}-01` : `${year}-${pad(month + 1)}`;
-    return {
-      from,
-      to: new Date(`${next}-01T00:00:00-03:00`),
-    };
+  if (query.period === 'semester') {
+    const current = `${today.slice(0, 4)}-${Number(today.slice(5, 7)) <= 6 ? 1 : 2}`;
+    const [year, half] = (query.semester ?? current).split('-').map(Number);
+    return half === 1
+      ? {
+          from: new Date(`${year}-01-01T00:00:00-03:00`),
+          to: new Date(`${year}-07-01T00:00:00-03:00`),
+        }
+      : {
+          from: new Date(`${year}-07-01T00:00:00-03:00`),
+          to: new Date(`${year + 1}-01-01T00:00:00-03:00`),
+        };
   }
 
   return { from: null, to: null };
@@ -182,7 +182,7 @@ export class ReportService {
         : isTeacher
           ? this.teacherDashboard(user.id, period, sessions, classId)
           : this.studentDashboard(user.id, sessions, classId, subjectId),
-      this.dashboardCharts(sessions, query.period === 'month'),
+      this.dashboardCharts(sessions),
     ]);
 
     return {
@@ -1180,10 +1180,7 @@ export class ReportService {
     };
   }
 
-  private async dashboardCharts(
-    sessions: Prisma.ExamSessionWhereInput,
-    byDay: boolean,
-  ) {
+  private async dashboardCharts(sessions: Prisma.ExamSessionWhereInput) {
     const rows = await this.prisma.examSession.findMany({
       where: sessions,
       orderBy: { finishedAt: 'asc' },
@@ -1252,9 +1249,8 @@ export class ReportService {
 
       if (row.finishedAt) {
         const label = row.finishedAt.toLocaleDateString('pt-BR', {
-          ...(byDay
-            ? { day: '2-digit', month: '2-digit' }
-            : { month: '2-digit', year: 'numeric' }),
+          month: '2-digit',
+          year: 'numeric',
           timeZone: TIME_ZONE,
         });
         timeline.set(label, (timeline.get(label) ?? 0) + 1);

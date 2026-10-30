@@ -123,8 +123,8 @@ describe('ReportService', () => {
       });
 
       const result = await service.dashInformation(studentReq, {
-        period: 'month',
-        month: '2026-10',
+        period: 'semester',
+        semester: '2026-2',
       });
 
       expect(result).toEqual(
@@ -144,8 +144,8 @@ describe('ReportService', () => {
         where: {
           status: 'FINISHED',
           finishedAt: {
-            gte: new Date('2026-10-01T03:00:00.000Z'),
-            lt: new Date('2026-11-01T03:00:00.000Z'),
+            gte: new Date('2026-07-01T03:00:00.000Z'),
+            lt: new Date('2027-01-01T03:00:00.000Z'),
           },
           userId: 's1',
           exam: {},
@@ -219,8 +219,8 @@ describe('ReportService', () => {
       ]);
 
       const result = await service.dashInformation(teacherReq, {
-        period: 'month',
-        month: '2026-10',
+        period: 'semester',
+        semester: '2026-2',
       });
 
       expect(result.scoresByExam).toEqual([
@@ -242,10 +242,7 @@ describe('ReportService', () => {
         wrong: 0,
         pending: 1,
       });
-      expect(result.timeline).toEqual([
-        { label: '05/10', submissions: 2 },
-        { label: '31/10', submissions: 1 },
-      ]);
+      expect(result.timeline).toEqual([{ label: '10/2026', submissions: 3 }]);
     });
 
     it('no total, a linha do tempo agrupa por mês', async () => {
@@ -276,15 +273,15 @@ describe('ReportService', () => {
   });
 
   describe('resolvePeriod', () => {
-    it('usa o mês atual de Brasília e respeita a virada do mês', () => {
+    it('usa o semestre atual de Brasília e respeita a virada do semestre', () => {
       expect(
         resolvePeriod(
-          { period: 'month' },
-          new Date('2026-11-01T01:00:00.000Z'),
+          { period: 'semester' },
+          new Date('2026-07-01T01:00:00.000Z'),
         ),
       ).toEqual({
-        from: new Date('2026-10-01T03:00:00.000Z'),
-        to: new Date('2026-11-01T03:00:00.000Z'),
+        from: new Date('2026-01-01T03:00:00.000Z'),
+        to: new Date('2026-07-01T03:00:00.000Z'),
       });
     });
 
@@ -297,11 +294,13 @@ describe('ReportService', () => {
       });
     });
 
-    it('dezembro termina em janeiro do ano seguinte', () => {
-      expect(resolvePeriod({ period: 'month', month: '2026-12' })).toEqual({
-        from: new Date('2026-12-01T03:00:00.000Z'),
-        to: new Date('2027-01-01T03:00:00.000Z'),
-      });
+    it('o 2º semestre termina em janeiro do ano seguinte', () => {
+      expect(resolvePeriod({ period: 'semester', semester: '2026-2' })).toEqual(
+        {
+          from: new Date('2026-07-01T03:00:00.000Z'),
+          to: new Date('2027-01-01T03:00:00.000Z'),
+        },
+      );
     });
 
     it('sem período devolve o total', () => {
