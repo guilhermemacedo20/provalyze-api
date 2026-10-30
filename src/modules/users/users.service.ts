@@ -200,6 +200,7 @@ export class UsersService {
           password: null,
           anonymizedAt: new Date(),
         },
+        select: { id: true },
       }),
     ]);
   }
@@ -244,14 +245,6 @@ export class UsersService {
           data: { content: { ...content, students } },
         }),
       ];
-    return this.prisma.user.update({
-      where: { id },
-      data: {
-        name: 'Usuário removido',
-        email: `removido-${id}@anon.provalyze.local`,
-        anonymizedAt: new Date(),
-      },
-      select: { id: true },
     });
 
     await this.prisma.$transaction([
