@@ -1,18 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+
+const MAX_ANSWER_LENGTH = 500;
+const EMAIL_PATTERN = /[\w.+-]+@[\w-]+(\.[\w-]+)+/g;
 
 const VALIDATE_ANSWER_PROMPT = `Você corrige uma resposta de prova.
 Leia a questão e a resposta do aluno. Devolva apenas JSON com:
 - suggestedScore: número de 0 até maxScore, com no máximo uma casa decimal
 - justification: texto curto com no máximo 100 caracteres em português explicando a nota a partir do enunciado e da resposta,
 distribua a nota pela aderência ao enunciado. Não invente conteúdo que o aluno não escreveu.`;
-
-const ANALYSE_EXAM_PROMPT = `Você escreve uma análise pedagógica do resultado de uma prova.
-Use apenas os dados recebidos. Devolva apenas JSON com:
-- analysis: dois parágrafos curtos em português
-O primeiro diz como o aluno foi em relação à nota alvo.
-O segundo aponta os temas com mais dificuldade e o que vale revisar, em tom de orientação.`;
 
 const ANALYSE_STUDENT_THEMES_PROMPT = `Escreva a análise pedagógica de um aluno.
 Use apenas o desempenho por tema e as provas recebidas. Devolva apenas JSON com:
@@ -41,6 +39,7 @@ export type ClassGapQuestion = {
 };
 
 export type ClassGapInput = {
+  classIds: string[];
   themes: { name: string; questions: ClassGapQuestion[] }[];
 };
 
@@ -97,6 +96,12 @@ export class AIService {
       examQuestion.exam.targetScore,
     );
 
+    const clean = await this.answerCleaner({
+      examAssignments: {
+        some: { exam: { sessions: { some: { id: answer.sessionId } } } },
+      },
+    });
+
     const suggestion = await this.sendPrompt<{
       suggestedScore: number;
       justification: string;
@@ -105,7 +110,7 @@ export class AIService {
       JSON.stringify({
         statement: examQuestion.question.statement,
         theme: examQuestion.question.theme.name,
-        studentAnswer: answer.content,
+        studentAnswer: clean(answer.content),
         maxScore,
       }),
       256,
@@ -134,59 +139,6 @@ export class AIService {
     return { suggestedScore, justification, maxScore };
   }
 
-  async analyzeExamResult(sessionId: string) {
-    const session = await this.prisma.examSession.findUnique({
-      where: { id: sessionId },
-      include: {
-        exam: { select: { title: true, targetScore: true } },
-        answers: {
-          include: {
-            examQuestion: {
-              include: {
-                question: {
-                  select: {
-                    statement: true,
-                    type: true,
-                    theme: { select: { name: true } },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
-
-    if (!session) {
-      return null;
-    }
-
-    const result = await this.sendPrompt<{ analysis: string }>(
-      ANALYSE_EXAM_PROMPT,
-      JSON.stringify({
-        title: session.exam.title,
-        score: session.score,
-        targetScore: session.exam.targetScore,
-        answers: session.answers.map((answer) => ({
-          theme: answer.examQuestion.question.theme.name,
-          statement: answer.examQuestion.question.statement,
-          type: answer.examQuestion.question.type,
-          studentAnswer: answer.content,
-          isCorrect: answer.isCorrect,
-          score: answer.score,
-          gradeStatus: answer.gradeStatus,
-        })),
-      }),
-      512,
-    );
-
-    if (!result?.analysis?.trim()) {
-      return null;
-    }
-
-    return { analysis: result.analysis.trim() };
-  }
-
   async analyzeStudentThemes(input: StudentThemeAnalysis) {
     const result = await this.sendPrompt<{
       difficulty: string;
@@ -212,10 +164,21 @@ export class AIService {
   }
 
   async analyseClassTheme(input: ClassGapInput) {
-    
+    const clean = await this.answerCleaner({ id: { in: input.classIds } });
+    const themes = input.themes.map((theme) => ({
+      ...theme,
+      questions: theme.questions.map((question) => ({
+        ...question,
+        answers: question.answers.map((answer) => ({
+          ...answer,
+          content: clean(answer.content),
+        })),
+      })),
+    }));
+
     const result = await this.sendPrompt<{ gaps: ClassGap[] }>(
       ANALYSE_CLASS_THEMES_PROMPT,
-      JSON.stringify({ themes: input.themes }),
+      JSON.stringify({ themes }),
       512,
     );
 
@@ -231,6 +194,40 @@ export class AIService {
 
       return [{ theme, evidence, suggestion }];
     });
+  }
+
+  private async answerCleaner(classWhere: Prisma.ClassWhereInput) {
+    const students = await this.prisma.user.findMany({
+      where: {
+        anonymizedAt: null,
+        studentAssignments: { some: { class: classWhere } },
+      },
+      select: { name: true, registrationNumber: true },
+    });
+
+    const terms = students
+      .flatMap((student) => [
+        student.registrationNumber?.trim(),
+        student.name.trim(),
+        ...student.name
+          .split(/\s+/)
+          .filter((part) => part.length > 2 && !/^d[aeo]s$/i.test(part)),
+      ])
+      .filter((term): term is string => !!term)
+      .sort((a, b) => b.length - a.length)
+      .map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+
+    const studentPattern = terms.length
+      ? new RegExp(`(?<![\\p{L}\\d])(${terms.join('|')})(?![\\p{L}\\d])`, 'giu')
+      : null;
+
+    return (content: string) => {
+      const withoutEmails = content.replace(EMAIL_PATTERN, '[aluno]');
+      const cleaned = studentPattern
+        ? withoutEmails.replace(studentPattern, '[aluno]')
+        : withoutEmails;
+      return cleaned.slice(0, MAX_ANSWER_LENGTH);
+    };
   }
 
   private async sendPrompt<T>(
