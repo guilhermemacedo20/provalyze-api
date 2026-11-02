@@ -109,7 +109,7 @@ describe('Acadêmico (cursos, matérias e turmas) - integração (API + service 
 
     // Assert
     expect(response.status).toBe(400);
-    expect(response.body.message).toContain('name should not be empty');
+    expect(response.body.message).toContain('O campo name não pode ficar vazio.');
     await expect(prisma.course.count()).resolves.toBe(0);
   });
 
