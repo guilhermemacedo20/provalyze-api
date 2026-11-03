@@ -113,7 +113,12 @@ export class QuestionsService {
       throw new NotFoundException('Questão não encontrada');
     }
 
-    return question;
+    const questionInExam = await this.prisma.examQuestion.findFirst({
+      where: { questionId: question.id },
+      select: { id: true },
+    });
+
+    return { ...question, inExam: !!questionInExam };
   }
 
   async listQuestions(req: any, query: ListQuestionsDto) {
@@ -150,6 +155,16 @@ export class QuestionsService {
 
     if (!existing) {
       throw new NotFoundException('Questão não encontrada');
+    }
+
+    const usedInExam = await this.prisma.examQuestion.count({
+      where: { questionId: id },
+    });
+
+    if (usedInExam > 0) {
+      throw new ConflictException(
+        'Essa questão está em uma prova e não pode ser editada',
+      );
     }
 
     await this.assertOwnedImage(user.id, updateQuestionDto.imageUrl);

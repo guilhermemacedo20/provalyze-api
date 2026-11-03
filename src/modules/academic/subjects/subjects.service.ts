@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { CreateSubjectDto } from './dto/subjects.dto';
 import { LogsService } from 'src/infra/logs/logs.service';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
@@ -28,12 +33,24 @@ export class SubjectsService {
     createSubjectDto: CreateSubjectDto,
   ) {
     await this.requireCourse(courseId);
-    const createdSubject = await this.prisma.subject.create({
-      data: {
-        name: createSubjectDto.name,
-        courseId,
-      },
-    });
+    const createdSubject = await this.prisma.subject
+      .create({
+        data: {
+          name: createSubjectDto.name,
+          courseId,
+        },
+      })
+      .catch((error: unknown) => {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
+          throw new ConflictException(
+            'Já existe uma matéria com esse nome nesse curso',
+          );
+        }
+        throw error;
+      });
     await this.logs.audit(`Subject created ${createdSubject.id}`, req.user.id);
     return createdSubject;
   }
