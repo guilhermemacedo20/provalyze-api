@@ -478,7 +478,6 @@ export class ReportService {
     }
 
     const gaps = await this.aiService.analyseClassTheme({
-      classIds: classId ? [classId] : classIds,
       themes,
     });
 
@@ -1061,7 +1060,6 @@ export class ReportService {
     if (rankedThemes.length === 0) return [];
 
     const gaps = await this.aiService.analyseClassTheme({
-      classIds: [classId],
       themes: rankedThemes.map(({ name, questions }) => ({ name, questions })),
     });
 
