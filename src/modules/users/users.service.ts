@@ -84,6 +84,14 @@ export class UsersService {
     }
     const user = await this.prisma.user.create({
       data: createUserDto,
+      select: {
+        id: true,
+        name: true,
+        role: true,
+        email: true,
+        createdAt: true,
+        registrationNumber: true,
+      },
     });
 
     await this.mail.sendCreateUser(createUserDto.email);
@@ -92,7 +100,17 @@ export class UsersService {
   }
 
   async getUser(id: string) {
-    const user = await this.prisma.user.findUnique({ where: { id } });
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        role: true,
+        email: true,
+        createdAt: true,
+        registrationNumber: true,
+      },
+    });
     if (!user) {
       throw new NotFoundException('Usuário não encontrado');
     }
@@ -122,6 +140,14 @@ export class UsersService {
     try {
       return await this.prisma.user.update({
         where: { id },
+        select: {
+          id: true,
+          name: true,
+          role: true,
+          email: true,
+          createdAt: true,
+          registrationNumber: true,
+        },
         data: updateUserDto,
       });
     } catch (error) {

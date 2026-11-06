@@ -54,6 +54,14 @@ describe('UsersService', () => {
 
     expect(prismaMock.user.findUnique).toHaveBeenCalledWith({
       where: { id: '1' },
+      select: {
+        id: true,
+        name: true,
+        role: true,
+        email: true,
+        createdAt: true,
+        registrationNumber: true,
+      },
     });
   });
 
@@ -88,6 +96,14 @@ describe('UsersService', () => {
         name: 'Updated Name',
         email: 'test@example.com',
         role: Role.TEACHER,
+      },
+      select: {
+        id: true,
+        name: true,
+        role: true,
+        email: true,
+        createdAt: true,
+        registrationNumber: true,
       },
     });
   });
