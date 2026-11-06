@@ -29,7 +29,17 @@ describe('UsersController', () => {
     const result = await controller.createUserFromAdmin(req, userData);
 
     expect(result).toEqual(userData);
-    expect(prismaMock.user.create).toHaveBeenCalledWith({ data: userData });
+    expect(prismaMock.user.create).toHaveBeenCalledWith({
+      data: userData,
+      select: {
+        id: true,
+        name: true,
+        role: true,
+        email: true,
+        createdAt: true,
+        registrationNumber: true,
+      },
+    });
   });
 
   it('should throw error when email already exists', async () => {
