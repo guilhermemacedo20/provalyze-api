@@ -64,6 +64,7 @@ const fullyGradedSession = {
 };
 
 const MAX_EXAMS_IN_CHART = 12;
+const MAX_ANSWERS_PER_QUESTION = 8;
 const TIME_ZONE = 'America/Sao_Paulo';
 
 type DashboardPeriodRange = {
@@ -433,11 +434,13 @@ export class ReportService {
           targetScore: exam.targetScore,
           correctCount: right.length,
           answerCount: examQuestion.answers.length,
-          answers: [...wrong, ...right].slice(0, 8).map((answer) => ({
-            content: answer.content,
-            isCorrect: answer.isCorrect,
-            score: answer.score,
-          })),
+          answers: [...wrong, ...right]
+            .slice(0, MAX_ANSWERS_PER_QUESTION)
+            .map((answer) => ({
+              content: answer.content,
+              isCorrect: answer.isCorrect,
+              score: answer.score,
+            })),
         });
         byTheme.set(name, questions);
       }
@@ -474,7 +477,9 @@ export class ReportService {
       return [];
     }
 
-    const gaps = await this.aiService.analyseClassTheme({ themes });
+    const gaps = await this.aiService.analyseClassTheme({
+      themes,
+    });
 
     if (!gaps) {
       throw new BadRequestException(
@@ -1018,11 +1023,13 @@ export class ReportService {
           targetScore: exam.targetScore,
           correctCount: right.length,
           answerCount: examQuestion.answers.length,
-          answers: [...wrong, ...right].slice(0, 8).map((answer) => ({
-            content: answer.content,
-            isCorrect: answer.isCorrect,
-            score: answer.score,
-          })),
+          answers: [...wrong, ...right]
+            .slice(0, MAX_ANSWERS_PER_QUESTION)
+            .map((answer) => ({
+              content: answer.content,
+              isCorrect: answer.isCorrect,
+              score: answer.score,
+            })),
         });
         byTheme.set(name, questions);
       }
