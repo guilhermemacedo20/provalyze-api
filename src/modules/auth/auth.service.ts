@@ -312,4 +312,60 @@ export class AuthService {
 
     return user;
   }
+
+  async exportMe(actualUser: { id: string }) {
+    const assignment = {
+      select: {
+        createdAt: true,
+        endedAt: true,
+        class: { select: { name: true, subject: { select: { name: true } } } },
+      },
+    };
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: actualUser.id },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        registrationNumber: true,
+        createdAt: true,
+        termsAcceptedAt: true,
+        termsVersion: true,
+        studentAssignments: assignment,
+        teacherAssignments: assignment,
+        sessions: {
+          select: {
+            status: true,
+            startedAt: true,
+            finishedAt: true,
+            score: true,
+            exam: { select: { title: true } },
+            answers: {
+              select: {
+                content: true,
+                isCorrect: true,
+                score: true,
+                gradeStatus: true,
+                teacherFeedback: true,
+                examQuestion: {
+                  select: { question: { select: { statement: true } } },
+                },
+              },
+            },
+            events: { select: { type: true, createdAt: true } },
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Usuário não encontrado');
+    }
+
+    this.logs.audit('Export user data ', user.id);
+
+    return { exportedAt: new Date(), ...user };
+  }
 }
