@@ -54,4 +54,10 @@ export class AuthController {
   me(@Req() req: { user: { email: string; id: string } }) {
     return this.authService.me(req.user);
   }
+
+  @Get('me/export')
+  @UseGuards(JwtAuthGuard)
+  exportMe(@Req() req: { user: { id: string } }) {
+    return this.authService.exportMe(req.user);
+  }
 }
