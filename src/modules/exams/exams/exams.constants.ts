@@ -1,0 +1,1 @@
+export const EXAM_TOTAL_SCORE = 10;

@@ -1,8 +1,12 @@
 node_modules
 # Keep environment variables out of version control
 .env
+.env.test
 
 /dist
 /coverage
 
 /generated/prisma
+
+/scripts/load-test/students.json
+/scripts/load-test/.env.load-test

@@ -1,10 +1,19 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from 'src/prisma/prisma.service';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { CreateSubjectDto } from './dto/subjects.dto';
+import { LogsService } from 'src/infra/logs/logs.service';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
 
 @Injectable()
 export class SubjectsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly logs: LogsService,
+  ) {}
 
   private async requireCourse(courseId: string) {
     const course = await this.prisma.course.findUnique({
@@ -18,15 +27,32 @@ export class SubjectsService {
     return course;
   }
 
-  async createSubject(courseId: string, createSubjectDto: CreateSubjectDto) {
+  async createSubject(
+    req: any,
+    courseId: string,
+    createSubjectDto: CreateSubjectDto,
+  ) {
     await this.requireCourse(courseId);
-
-    return this.prisma.subject.create({
-      data: {
-        name: createSubjectDto.name,
-        courseId,
-      },
-    });
+    const createdSubject = await this.prisma.subject
+      .create({
+        data: {
+          name: createSubjectDto.name,
+          courseId,
+        },
+      })
+      .catch((error: unknown) => {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
+          throw new ConflictException(
+            'Já existe uma matéria com esse nome nesse curso',
+          );
+        }
+        throw error;
+      });
+    await this.logs.audit(`Subject created ${createdSubject.id}`, req.user.id);
+    return createdSubject;
   }
 
   async listSubjects(courseId: string) {
@@ -51,7 +77,7 @@ export class SubjectsService {
     }));
   }
 
-  async deleteSubject(courseId: string, subjectId: string) {
+  async deleteSubject(req: any, courseId: string, subjectId: string) {
     await this.requireCourse(courseId);
 
     const existing = await this.prisma.subject.findFirst({
@@ -61,6 +87,8 @@ export class SubjectsService {
     if (!existing) {
       throw new NotFoundException('Matéria não encontrada');
     }
+
+    await this.logs.audit(`Subject deleted ${existing.id}`, req.user.id);
 
     return this.prisma.subject.delete({ where: { id: subjectId } });
   }

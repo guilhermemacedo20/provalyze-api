@@ -1,23 +1,31 @@
 import {
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateThemeDto } from './dto/themes.dto';
+import { LogsService } from 'src/infra/logs/logs.service';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
 
 @Injectable()
 export class ThemeService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly logs: LogsService,
+  ) {}
 
   async createTheme(req: any, createThemeDto: CreateThemeDto) {
     const user = req.user;
-
-    return this.prisma.theme.create({
+    const themeCreated = await this.prisma.theme.create({
       data: {
         name: createThemeDto.name,
         userId: user.id,
       },
     });
+
+    await this.logs.audit(`Theme Created ${themeCreated.id}`, user.id);
+
+    return themeCreated;
   }
 
   async listThemes(req: any) {
@@ -54,7 +62,7 @@ export class ThemeService {
     if (!existing) {
       throw new NotFoundException('Tema não encontrado');
     }
-
+    await this.logs.audit(`Theme Updated ${existing.id}`, user.id);
     return this.prisma.theme.update({
       where: { id },
       data: {
@@ -73,6 +81,18 @@ export class ThemeService {
     if (!existing) {
       throw new NotFoundException('Tema não encontrado');
     }
+
+    const usedInExam = await this.prisma.examQuestion.count({
+      where: { question: { themeId: id } },
+    });
+    
+    if (usedInExam > 0) {
+      throw new ConflictException(
+        'Esse tema tem questões usadas em provas e não pode ser excluído',
+      );
+    }
+
+    await this.logs.audit(`Theme Deleted ${existing.id}`, user.id);
 
     return this.prisma.theme.delete({ where: { id } });
   }

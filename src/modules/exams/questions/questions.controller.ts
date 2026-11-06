@@ -15,12 +15,24 @@ import { CreateQuestionDto, ListQuestionsDto } from './dto/questions.dto';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt.guard';
 import { RolesGuard } from 'src/common/guards/role.guard';
+import { UploadQuestionImageDto } from './dto/question-image.dto';
 
 @Controller('questions')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('TEACHER')
 export class QuestionsController {
   constructor(private readonly questionsService: QuestionsService) {}
+
+  @Post('images')
+  uploadImage(@Req() req: any, @Body() body: UploadQuestionImageDto) {
+    return this.questionsService.upload(req, body.image);
+  }
+
+  @Get('images/:imageId')
+  @Roles('TEACHER', 'STUDENT')
+  getImage(@Req() req: any, @Param('imageId') imageId: string) {
+    return this.questionsService.getImage(req, imageId);
+  }
 
   @Post()
   createQuestion(

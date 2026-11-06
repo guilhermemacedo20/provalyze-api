@@ -3,13 +3,30 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateClassDto } from './dto/classes.dto';
 import { Role } from '@prisma/client';
+import { LogsService } from 'src/infra/logs/logs.service';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
 
 @Injectable()
 export class ClassesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly logs: LogsService,
+  ) {}
+
+  private async assertTeacherOwnClass(user: any, classId: string) {
+    if (user.role !== Role.TEACHER) {
+      return;
+    }
+
+    const assignment = await this.prisma.teacherAssignment.findFirst({
+      where: { classId, userId: user.id, endedAt: null },
+    });
+    if (!assignment) {
+      throw new NotFoundException('Turma não encontrada');
+    }
+  }
 
   private async generateJoinCode(): Promise<string> {
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -24,10 +41,13 @@ export class ClassesService {
     );
   }
 
-  async createClass(createClassDto: CreateClassDto) {
+  async createClass(req: any, createClassDto: CreateClassDto) {
+    const user = req.user;
+    const isTeacher = user.role === Role.TEACHER;
     const subject = await this.prisma.subject.findUnique({
       where: { id: createClassDto.subjectId },
     });
+
     if (!subject) {
       throw new NotFoundException('Matéria não encontrada');
     }
@@ -35,15 +55,18 @@ export class ClassesService {
     const teacher = await this.prisma.user.findUnique({
       where: { id: createClassDto.teacherId },
     });
-    if (!teacher || teacher.role !== Role.TEACHER) {
+    if (
+      !teacher ||
+      teacher.role !== Role.TEACHER ||
+      (isTeacher && createClassDto.teacherId !== user.id)
+    ) {
       throw new BadRequestException(
         'O usuário selecionado não é um professor válido',
       );
     }
 
     const joinCode = await this.generateJoinCode();
-
-    return this.prisma.class.create({
+    const classCreated = await this.prisma.class.create({
       data: {
         name: createClassDto.name,
         subjectId: createClassDto.subjectId,
@@ -53,10 +76,21 @@ export class ClassesService {
         },
       },
     });
+    await this.logs.audit(`Class Created ${classCreated.id}`, user.id);
+    return classCreated;
   }
 
-  async listClasses() {
+  async listClasses(req: any) {
+    const user = req.user;
+    const isTeacher = user.role === Role.TEACHER;
     const classes = await this.prisma.class.findMany({
+      where: isTeacher
+        ? {
+            teacherAssignments: {
+              some: { userId: user.id },
+            },
+          }
+        : undefined,
       include: {
         subject: { include: { course: { select: { name: true } } } },
         teacherAssignments: {
@@ -74,7 +108,7 @@ export class ClassesService {
       id: schoolClass.id,
       name: schoolClass.name,
       joinCode: schoolClass.joinCode,
-      teacherName: schoolClass.teacherAssignments[0]?.teacher.name ?? '—',
+      teacherName: schoolClass.teacherAssignments[0]?.teacher.name,
       subjectName: schoolClass.subject.name,
       courseName: schoolClass.subject.course.name,
       studentsCount: schoolClass.studentAssignments.length,
@@ -82,7 +116,73 @@ export class ClassesService {
     }));
   }
 
-  async getClass(id: string) {
+  async listStudentClasses(req: any) {
+    const user = req.user;
+    const isStudent = user.role === Role.STUDENT;
+
+    if (!isStudent) {
+      throw new BadRequestException('Usuário não possui sala cadastrada');
+    }
+
+    const classes = await this.prisma.class.findMany({
+      where: {
+        studentAssignments: {
+          some: { userId: user.id, endedAt: null },
+        },
+      },
+      include: {
+        subject: { include: { course: { select: { name: true } } } },
+        teacherAssignments: {
+          where: { endedAt: null },
+          include: { teacher: { select: { name: true } } },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return classes.map((schoolClass) => ({
+      id: schoolClass.id,
+      name: schoolClass.name,
+      teacherName: schoolClass.teacherAssignments[0]?.teacher.name,
+      subjectName: schoolClass.subject.name,
+      courseName: schoolClass.subject.course.name,
+      averageScore: null, // ainda não existe módulo de provas/notas no sistema
+    }));
+  }
+
+  async joinClass(req: any, code: string) {
+    const user = req.user;
+    const joinCode = code.trim().toLowerCase();
+
+    if (!joinCode) {
+      throw new BadRequestException('Informe o código da sala');
+    }
+
+    const schoolClass = await this.prisma.class.findUnique({
+      where: { joinCode },
+    });
+    if (!schoolClass) {
+      throw new NotFoundException('Código de sala inválido');
+    }
+
+    const existing = await this.prisma.studentAssignment.findFirst({
+      where: { classId: schoolClass.id, userId: user.id, endedAt: null },
+    });
+
+    if (existing) {
+      throw new BadRequestException('Você já está nessa sala');
+    }
+
+    await this.logs.audit(`Student joined class ${schoolClass.id}`, user.id);
+
+    return this.prisma.studentAssignment.create({
+      data: { classId: schoolClass.id, userId: user.id },
+    });
+  }
+
+  async getClass(req: any, id: string) {
+    await this.assertTeacherOwnClass(req.user, id);
+
     const schoolClass = await this.prisma.class.findUnique({
       where: { id },
       include: {
@@ -108,7 +208,7 @@ export class ClassesService {
       id: schoolClass.id,
       name: schoolClass.name,
       joinCode: schoolClass.joinCode,
-      teacherName: schoolClass.teacherAssignments[0]?.teacher.name ?? '—',
+      teacherName: schoolClass.teacherAssignments[0]?.teacher.name,
       subjectName: schoolClass.subject.name,
       courseName: schoolClass.subject.course.name,
       students: schoolClass.studentAssignments.map((a) => ({
@@ -119,7 +219,9 @@ export class ClassesService {
     };
   }
 
-  async addStudent(classId: string, studentId: string) {
+  async addStudent(req: any, classId: string, studentId: string) {
+    await this.assertTeacherOwnClass(req.user, classId);
+
     const schoolClass = await this.prisma.class.findUnique({
       where: { id: classId },
     });
@@ -144,13 +246,18 @@ export class ClassesService {
         'Esse aluno já está matriculado nessa turma',
       );
     }
-
+    await this.logs.audit(
+      `Student added ${classId} and student: ${studentId}`,
+      req.user.id,
+    );
     return this.prisma.studentAssignment.create({
       data: { classId, userId: studentId },
     });
   }
 
-  async removeStudent(classId: string, studentId: string) {
+  async removeStudent(req: any, classId: string, studentId: string) {
+    await this.assertTeacherOwnClass(req.user, classId);
+
     const assignment = await this.prisma.studentAssignment.findFirst({
       where: { classId, userId: studentId, endedAt: null },
     });
@@ -159,18 +266,25 @@ export class ClassesService {
       throw new NotFoundException('Aluno não encontrado nessa turma');
     }
 
+    await this.logs.audit(
+      `Student removed ${classId} and student: ${studentId}`,
+      req.user.id,
+    );
+
     return this.prisma.studentAssignment.update({
       where: { id: assignment.id },
       data: { endedAt: new Date() },
     });
   }
 
-  async deleteClass(id: string) {
+  async deleteClass(req: any, id: string) {
+    await this.assertTeacherOwnClass(req.user, id);
+
     const existing = await this.prisma.class.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException('Turma não encontrada');
     }
-
+    await this.logs.audit(`Class Deleted ${id}`, req.user.id);
     return this.prisma.class.delete({ where: { id } });
   }
 }

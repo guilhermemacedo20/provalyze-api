@@ -1,0 +1,4 @@
+[
+  { "email": "aluno01@exemplo.edu", "password": "senha-do-aluno" },
+  { "email": "aluno02@exemplo.edu", "password": "senha-do-aluno" }
+]

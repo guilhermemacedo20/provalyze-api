@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
@@ -21,14 +22,15 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Post()
-  createUser(@Body() createUserDto: CreateUserDto) {
-    return this.usersService.createUser(createUserDto);
+  @Roles('ADMIN', 'COORDINATOR')
+  createUserFromAdmin(@Req() req: any, @Body() createUserDto: CreateUserDto) {
+    return this.usersService.createUserFromAdmin(req, createUserDto);
   }
 
   @Get()
-  @Roles('ADMIN', 'COORDINATOR')
-  listUsers() {
-    return this.usersService.listUsers();
+  @Roles('ADMIN', 'TEACHER', 'COORDINATOR')
+  listUsers(@Req() req: any) {
+    return this.usersService.listUsers(req);
   }
 
   @Get(':id')
@@ -37,12 +39,18 @@ export class UsersController {
   }
 
   @Patch(':id')
-  updateUser(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
-    return this.usersService.updateUser(id, updateUserDto);
+  @Roles('ADMIN', 'COORDINATOR')
+  updateUser(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() updateUserDto: UpdateUserDto,
+  ) {
+    return this.usersService.updateUser(req, id, updateUserDto);
   }
 
   @Delete(':id')
-  deleteUser(@Param('id') id: string) {
-    return this.usersService.deleteUser(id);
+  @Roles(`ADMIN`, `COORDINATOR`, `STUDENT`, `TEACHER`)
+  deleteUser(@Req() req: any, @Param('id') id: string) {
+    return this.usersService.deleteUser(req, id);
   }
 }
