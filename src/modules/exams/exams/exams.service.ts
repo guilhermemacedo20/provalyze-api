@@ -121,6 +121,57 @@ function studentStatus(
   return allGraded ? 'GRADED' : 'FINISHED';
 }
 
+const examClassSelect = {
+  class: {
+    select: {
+      id: true,
+      name: true,
+      studentAssignments: {
+        select: {
+          endedAt: true,
+          student: { select: { id: true, name: true } },
+        },
+      },
+    },
+  },
+} satisfies Prisma.ExamAssignmentSelect;
+
+function examStudents(
+  assignments: Prisma.ExamAssignmentGetPayload<{
+    select: typeof examClassSelect;
+  }>[],
+  sessions: { userId: string; student: { name: string } }[],
+) {
+  const withSession = new Set(sessions.map((s) => s.userId));
+  const students = new Map<
+    string,
+    { name: string; classId: string | null; className: string }
+  >();
+
+  assignments.forEach(({ class: schoolClass }) =>
+    schoolClass.studentAssignments
+      .filter((a) => !a.endedAt || withSession.has(a.student.id))
+      .forEach((a) =>
+        students.set(a.student.id, {
+          name: a.student.name,
+          classId: schoolClass.id,
+          className: schoolClass.name,
+        }),
+      ),
+  );
+  sessions.forEach((s) => {
+    if (!students.has(s.userId)) {
+      students.set(s.userId, {
+        name: s.student.name,
+        classId: null,
+        className: '-',
+      });
+    }
+  });
+
+  return students;
+}
+
 function round1(value: number) {
   return Math.round(value * 10) / 10;
 }
@@ -1237,50 +1288,37 @@ export class ExamsService {
     return { id };
   }
 
-  async getOverview(req: AuthenticatedRequest, id: string) {
+  async getOverview(req: AuthenticatedRequest, id: string, classId?: string) {
     const exam = await this.prisma.exam.findFirst({
       where: { id, userId: req.user.id },
       include: {
         examQuestions: { select: { id: true } },
-        assignments: {
-          include: {
-            class: {
-              select: {
-                studentAssignments: {
-                  where: { endedAt: null },
-                  include: { student: { select: { id: true, name: true } } },
-                },
-              },
-            },
-          },
-        },
+        assignments: { select: examClassSelect },
       },
     });
     if (!exam) {
       throw new NotFoundException('Prova não encontrada');
+    }
+    if (classId && !exam.assignments.some((a) => a.class.id === classId)) {
+      throw new NotFoundException('Turma não encontrada nessa prova');
     }
 
     const sessions = await this.prisma.examSession.findMany({
       where: { examId: id },
       include: {
         student: { select: { id: true, name: true } },
-        answers: { select: { gradeStatus: true } },
+        answers: {
+          select: { gradeStatus: true, isCorrect: true, examQuestionId: true },
+        },
       },
     });
 
-    const students = new Map<string, string>();
-    exam.assignments.forEach((a) =>
-      a.class.studentAssignments.forEach((s) =>
-        students.set(s.student.id, s.student.name),
-      ),
-    );
-
-    sessions.forEach((s) => students.set(s.student.id, s.student.name));
-
     const sessionByStudent = new Map(sessions.map((s) => [s.userId, s]));
+    const students = examStudents(exam.assignments, sessions);
 
     const rows = [...students.entries()]
-      .map(([studentId, name]) => {
+      .filter(([, student]) => !classId || student.classId === classId)
+      .map(([studentId, student]) => {
         const session = sessionByStudent.get(studentId);
         const minutes =
           session?.startedAt && session.finishedAt
@@ -1292,7 +1330,9 @@ export class ExamsService {
 
         return {
           id: studentId,
-          name,
+          name: student.name,
+          classId: student.classId,
+          className: student.className,
           status: studentStatus(session),
           score: session?.score ?? null,
           durationMinutes: minutes,
@@ -1306,6 +1346,9 @@ export class ExamsService {
     const finished = rows.filter(
       (r) => r.status === 'FINISHED' || r.status === 'GRADED',
     ).length;
+    const answers = rows.flatMap(
+      (row) => sessionByStudent.get(row.id)?.answers ?? [],
+    );
 
     return {
       stats: {
@@ -1319,7 +1362,73 @@ export class ExamsService {
           : 0,
       },
       students: rows,
+      questions: exam.examQuestions.map((eq) => {
+        const questionAnswers = answers.filter(
+          (a) => a.examQuestionId === eq.id,
+        );
+        return {
+          examQuestionId: eq.id,
+          correctRate: questionAnswers.length
+            ? Math.round(
+                (questionAnswers.filter((a) => a.isCorrect).length /
+                  questionAnswers.length) *
+                  100,
+              )
+            : null,
+        };
+      }),
     };
+  }
+
+  async getResults(req: AuthenticatedRequest, id: string) {
+    const exam = await this.prisma.exam.findFirst({
+      where: { id, userId: req.user.id },
+      select: {
+        title: true,
+        assignments: { select: examClassSelect },
+        sessions: {
+          select: {
+            userId: true,
+            status: true,
+            score: true,
+            finishedAt: true,
+            student: { select: { name: true } },
+            answers: { select: { gradeStatus: true } },
+          },
+        },
+      },
+    });
+    if (!exam) {
+      throw new NotFoundException('Prova não encontrada');
+    }
+
+    const sessionByStudent = new Map(exam.sessions.map((s) => [s.userId, s]));
+    const students = examStudents(exam.assignments, exam.sessions);
+
+    const rows = [...students.entries()]
+      .map(([studentId, student]) => {
+        const session = sessionByStudent.get(studentId);
+        return {
+          classId: student.classId,
+          className: student.className,
+          name: student.name,
+          status: studentStatus(session),
+          score: session?.score ?? null,
+          deliveredAt: session?.finishedAt ?? null,
+        };
+      })
+      .sort(
+        (a, b) =>
+          a.className.localeCompare(b.className, 'pt-BR') ||
+          a.name.localeCompare(b.name, 'pt-BR'),
+      );
+
+    await this.logs.audit(
+      `Exportou resultados da prova ${exam.title}`,
+      req.user.id,
+    );
+
+    return rows;
   }
 
   async getCorrection(
@@ -1383,14 +1492,15 @@ export class ExamsService {
       },
       student: session.student,
       score: session.score,
-            integrity: {
+      integrity: {
         startedAt: session.startedAt,
         finishedAt: session.finishedAt,
         events: session.events.map((event) => ({
           id: event.id,
           type: event.type,
           createdAt: event.createdAt,
-          questionNumber: numberByExamQuestion.get(event.examQuestionId) ?? null,
+          questionNumber:
+            numberByExamQuestion.get(event.examQuestionId) ?? null,
         })),
       },
       questions: exam.examQuestions.map((examQuestion, index) => {

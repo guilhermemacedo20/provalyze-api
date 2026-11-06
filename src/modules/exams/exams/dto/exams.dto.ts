@@ -118,3 +118,9 @@ export class GradeAnswerDto {
   @MaxLength(1000)
   feedback?: string;
 }
+
+export class ExamOverviewQueryDto {
+  @IsOptional()
+  @IsString()
+  classId?: string;
+}
