@@ -89,11 +89,12 @@ model AuditEvent {
 model PasswordResetToken {
   id        String    @id @default(cuid())
   userId    String    @unique
-  code  String
+  code      String
+  attempts  Int       @default(0)
   expiresAt DateTime
   usedAt    DateTime?
   createdAt DateTime  @default(now())
-  
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
