@@ -38,7 +38,9 @@ type ReportContent = {
 };
 
 function roundScore(value: number | null) {
-  if (!value) return null;
+  if (value === null) {
+    return null;
+  }
   return Math.round(value * 100) / 100;
 }
 
@@ -250,9 +252,9 @@ export class ReportService {
         ? await this.prisma.examSession.findMany({
             where: {
               ...fullyGradedSession,
-              exam: {
-                id: { in: examIds },
-                assignments: {
+              examId: { in: examIds },
+              student: {
+                studentAssignments: {
                   some: { classId: classId ?? { in: classIds } },
                 },
               },

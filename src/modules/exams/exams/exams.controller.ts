@@ -6,12 +6,17 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import { ExamsService } from './exams.service';
 import type { AuthenticatedRequest } from 'src/common/types/authenticated-request';
-import { GradeAnswerDto, SaveExamDto } from './dto/exams.dto';
+import {
+  ExamOverviewQueryDto,
+  GradeAnswerDto,
+  SaveExamDto,
+} from './dto/exams.dto';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt.guard';
 import { RolesGuard } from 'src/common/guards/role.guard';
@@ -63,9 +68,18 @@ export class ExamsController {
     return this.examsService.getExam(req, id);
   }
 
+  @Get(':id/results')
+  getResults(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    return this.examsService.getResults(req, id);
+  }
+
   @Get(':id/overview')
-  getOverview(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
-    return this.examsService.getOverview(req, id);
+  getOverview(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Query() query: ExamOverviewQueryDto,
+  ) {
+    return this.examsService.getOverview(req, id, query.classId);
   }
 
   @Patch(':id')

@@ -285,8 +285,11 @@ describe('ExamsService', () => {
       assignments: [
         {
           class: {
+            id: 'class-1',
+            name: 'Turma A',
             studentAssignments: [
               {
+                endedAt: null,
                 student: { id: 'student-1', name: 'Ana' },
               },
             ],
@@ -302,7 +305,13 @@ describe('ExamsService', () => {
         startedAt: new Date('2030-06-01T10:00:00.000Z'),
         finishedAt: new Date('2030-06-01T11:00:00.000Z'),
         student: { id: 'student-1', name: 'Ana' },
-        answers: [{ gradeStatus: GradeStatus.AUTO }],
+        answers: [
+          {
+            gradeStatus: GradeStatus.AUTO,
+            isCorrect: true,
+            examQuestionId: 'eq-1',
+          },
+        ],
       },
     ]);
 
@@ -317,8 +326,13 @@ describe('ExamsService', () => {
     expect(overview.students[0]).toMatchObject({
       id: 'student-1',
       name: 'Ana',
+      classId: 'class-1',
+      className: 'Turma A',
       score: 8,
     });
+    expect(overview.questions).toEqual([
+      { examQuestionId: 'eq-1', correctRate: 100 },
+    ]);
   });
 
   it('gradeAnswer rejeita nota acima do máximo', async () => {
