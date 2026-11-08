@@ -7,6 +7,7 @@ import { CreateClassDto } from './dto/classes.dto';
 import { Role } from '@prisma/client';
 import { LogsService } from 'src/infra/logs/logs.service';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { generateJoinCode } from 'src/common/utils/generateCode';
 
 @Injectable()
 export class ClassesService {
@@ -30,7 +31,7 @@ export class ClassesService {
 
   private async generateJoinCode(): Promise<string> {
     for (let attempt = 0; attempt < 5; attempt++) {
-      const code = Math.random().toString(36).slice(2, 10);
+      const code = generateJoinCode();
       const existing = await this.prisma.class.findUnique({
         where: { joinCode: code },
       });

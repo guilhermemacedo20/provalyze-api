@@ -293,6 +293,7 @@ describe('AuthService', () => {
       prismaMock.passwordResetToken.findUnique.mockResolvedValue({
         userId: '1',
         code: 'codeHash',
+        attempts: 0,
         expiresAt: new Date(Date.now() + 5 * 60 * 1000),
         usedAt: null,
       });
@@ -301,6 +302,48 @@ describe('AuthService', () => {
       jest.mocked(bcrypt.compare).mockResolvedValue(true as never);
       jest.mocked(bcrypt.hash).mockResolvedValue('newPasswordHash' as never);
     };
+
+    it('should count a failed attempt when the code is wrong', async () => {
+      prismaMock.user.findUnique.mockResolvedValue({ id: '1' });
+      prismaMock.passwordResetToken.findUnique.mockResolvedValue({
+        userId: '1',
+        code: 'codeHash',
+        attempts: 2,
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+        usedAt: null,
+      });
+      prismaMock.passwordResetToken.update.mockResolvedValue({});
+      jest.mocked(bcrypt.compare).mockResolvedValue(false as never);
+
+      await expect(service.resetPassword(resetData)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+
+      expect(prismaMock.passwordResetToken.update).toHaveBeenCalledWith({
+        where: { userId: '1' },
+        data: { attempts: { increment: 1 } },
+      });
+      expect(prismaMock.user.update).not.toHaveBeenCalled();
+    });
+
+    it('should block the code after too many failed attempts', async () => {
+      prismaMock.user.findUnique.mockResolvedValue({ id: '1' });
+      prismaMock.passwordResetToken.findUnique.mockResolvedValue({
+        userId: '1',
+        code: 'codeHash',
+        attempts: 5,
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+        usedAt: null,
+      });
+      jest.mocked(bcrypt.compare).mockResolvedValue(true as never);
+
+      await expect(service.resetPassword(resetData)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+
+      expect(bcrypt.compare).not.toHaveBeenCalled();
+      expect(prismaMock.user.update).not.toHaveBeenCalled();
+    });
 
     it('should require accepting the terms when the account has not accepted yet', async () => {
       prismaMock.user.findUnique.mockResolvedValue({

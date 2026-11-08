@@ -12,21 +12,23 @@ Monólito NestJS: Controller → Service → Prisma. Prefixo global `api`, porta
 
 Versões do repositório.
 
-| Tecnologia                                                           | Versão                           | Uso                        |
-| -------------------------------------------------------------------- | -------------------------------- | -------------------------- |
-| Node.js                                                              | 20+                              | Runtime                    |
-| NestJS (`@nestjs/common`, `core`, `platform-express`,`config`,`jwt`) | 11.0.x                           | HTTP, módulos              |
-| TypeScript                                                           | 5.7.3                            | Tipagem                    |
-| Prisma                                                               | 6.19.3                           | ORM e migrations           |
-| PostgreSQL                                                           | 16 (imagem `postgres:16-alpine`) | Banco de dados             |
-| Docker                                                               | -                                | Sobe o Postgres localmente |
-| class-validator                                                      | 0.15.1                           | DTOs                       |
-| class-transformer                                                    | 0.5.1                            | ValidationPipe transform   |
-| passport                                                             | 0.7.0                            | Configuração jwt           |
-| jwt                                                                  | 4.0.1                            | Autenticação               |
-| ESLint                                                               | 9.18.0                           | Lint                       |
-| Jest                                                                 | 30.0.0                           | Testes                     |
-| Google GenAi                                                         | 1.0.0                            | IA                         |
+| Tecnologia                                                           | Versão                           | Uso                                            |
+| -------------------------------------------------------------------- | -------------------------------- | ---------------------------------------------- |
+| Node.js                                                              | 20+                              | Runtime                                        |
+| NestJS (`@nestjs/common`, `core`, `platform-express`,`config`,`jwt`) | 11.0.x                           | HTTP, módulos                                  |
+| TypeScript                                                           | 5.7.3                            | Tipagem                                        |
+| Prisma                                                               | 6.19.3                           | ORM e migrations                               |
+| PostgreSQL                                                           | 16 (imagem `postgres:16-alpine`) | Banco de dados                                 |
+| Docker                                                               | -                                | Sobe o Postgres localmente                     |
+| class-validator                                                      | 0.15.1                           | DTOs                                           |
+| class-transformer                                                    | 0.5.1                            | ValidationPipe transform                       |
+| passport                                                             | 0.7.0                            | Configuração jwt                               |
+| jwt                                                                  | 4.0.1                            | Autenticação                                   |
+| ESLint                                                               | 9.18.0                           | Lint                                           |
+| Jest                                                                 | 30.0.0                           | Testes                                         |
+| Google GenAi                                                         | 1.0.0                            | IA                                             |
+| Throttler                                                            | 6.7.1                            | Rate limiting                                  |
+| Helmet                                                               | 8.3.0                            | Previnir injeção de script e ataques no header |
 
 Pipe global: `whitelist`, `transform`, `forbidNonWhitelisted`. Auth JWT (`@nestjs/jwt` + Passport) quando o módulo de auth estiver ativo.
 

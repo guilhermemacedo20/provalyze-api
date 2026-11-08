@@ -21,6 +21,8 @@ import { MailService } from 'src/infra/mail/mail.service';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { Role } from '@prisma/client';
 
+const MAX_RESET_ATTEMPTS = 5;
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -107,6 +109,7 @@ export class AuthService {
       },
       update: {
         code: resetCodeHashed,
+        attempts: 0,
         expiresAt,
         usedAt: null,
       },
@@ -128,13 +131,22 @@ export class AuthService {
       where: { userId: user.id },
     });
 
-    if (!token || token.expiresAt <= new Date() || token.usedAt) {
+    if (
+      !token ||
+      token.expiresAt <= new Date() ||
+      token.usedAt ||
+      token.attempts >= MAX_RESET_ATTEMPTS
+    ) {
       throw new UnauthorizedException(errorMessage);
     }
 
     const validCode = await bcrypt.compare(data.code, token.code);
 
     if (!validCode) {
+      await this.prisma.passwordResetToken.update({
+        where: { userId: user.id },
+        data: { attempts: { increment: 1 } },
+      });
       throw new UnauthorizedException(errorMessage);
     }
 

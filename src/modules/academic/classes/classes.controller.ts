@@ -13,6 +13,7 @@ import { CreateClassDto, AddStudentDto, JoinClassDto } from './dto/classes.dto';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt.guard';
 import { RolesGuard } from 'src/common/guards/role.guard';
+import { Throttle } from '@nestjs/throttler';
 
 @Controller('classes')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -38,6 +39,7 @@ export class ClassesController {
 
   @Roles('STUDENT')
   @Post('join')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   joinClass(@Req() req: any, @Body() joinClassDto: JoinClassDto) {
     return this.classesService.joinClass(req, joinClassDto.code);
   }
