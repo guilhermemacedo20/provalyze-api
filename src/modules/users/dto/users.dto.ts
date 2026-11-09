@@ -1,9 +1,19 @@
-import { IsEmail, IsEnum, IsString} from 'class-validator';
+import {
+  IsEmail,
+  IsEnum,
+  IsNotEmpty,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 import { Role } from '@prisma/client';
 import { Transform } from 'class-transformer';
+import { Trim } from 'src/common/decorators/trim.decorator';
 
 export class CreateUserDto {
+  @Trim()
   @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
   name!: string;
 
   @Transform(({ value }: { value: unknown }) => {
@@ -20,7 +30,10 @@ export class CreateUserDto {
 }
 
 export class UpdateUserDto {
+  @Trim()
   @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
   name!: string;
 
   @Transform(({ value }: { value: unknown }) => {

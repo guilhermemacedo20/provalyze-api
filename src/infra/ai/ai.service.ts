@@ -1,8 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 
 const MAX_ANSWER_LENGTH = 500;
+const AI_TIMEOUT_MS = 30 * 1000;
+const GAPS_CACHE_TTL_MS = 60 * 60 * 1000;
+const GAPS_CACHE_MAX_ENTRIES = 100;
 
 const VALIDATE_ANSWER_PROMPT = `Você corrige uma resposta de prova.
 Leia a questão e a resposta do aluno. Devolva apenas JSON com:
@@ -67,10 +71,6 @@ export type AnswerToScore = {
       statement: string;
       theme: { name: string };
     };
-    exam: {
-      targetScore: number;
-      examQuestions: { points: number }[];
-    };
   };
 };
 
@@ -81,17 +81,8 @@ export class AIService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async suggestAnswerScore(answer: AnswerToScore) {
+  async suggestAnswerScore(answer: AnswerToScore, maxScore: number) {
     const examQuestion = answer.examQuestion;
-    const totalPoints = examQuestion.exam.examQuestions.reduce(
-      (total, item) => total + item.points,
-      0,
-    );
-    const maxScore = this.weightedScore(
-      examQuestion.points,
-      totalPoints,
-      examQuestion.exam.targetScore,
-    );
 
     const suggestion = await this.sendPrompt<{
       suggestedScore: number;
@@ -166,24 +157,33 @@ export class AIService {
       })),
     }));
 
+    const data = JSON.stringify({ themes });
+    const key = createHash('sha256').update(data).digest('hex');
+
     const result = await this.sendPrompt<{ gaps: ClassGap[] }>(
       ANALYSE_CLASS_THEMES_PROMPT,
-      JSON.stringify({ themes }),
+      data,
       512,
     );
 
-    const gaps = result?.gaps;
-    if (!Array.isArray(gaps)) {
+    if (!Array.isArray(result?.gaps)) {
       return null;
     }
 
-    return gaps.flatMap((gap) => {
-      const theme = gap.theme?.trim();
-      const evidence = gap.evidence?.trim();
-      const suggestion = gap.suggestion?.trim();
+    const gaps = result.gaps.flatMap((gap) => {
+      const theme = gap?.theme?.trim();
+      if (!theme) return [];
 
-      return [{ theme, evidence, suggestion }];
+      return [
+        {
+          theme,
+          evidence: gap.evidence?.trim() ?? '',
+          suggestion: gap.suggestion?.trim() ?? '',
+        },
+      ];
     });
+
+    return gaps;
   }
 
   private async sendPrompt<T>(
@@ -197,39 +197,33 @@ export class AIService {
     if (!aiToken || !aiModel) {
       return null;
     }
-    const { GoogleGenAI } = await import('@google/genai');
-    const ai = new GoogleGenAI({
-      apiKey: aiToken,
-    });
+    try {
+      const { GoogleGenAI } = await import('@google/genai');
+      const ai = new GoogleGenAI({
+        apiKey: aiToken,
+      });
 
-    const response = await ai.models.generateContent({
-      model: aiModel,
-      contents: data,
-      config: {
-        systemInstruction: prompt,
-        responseMimeType: 'application/json',
-        temperature: 0.2,
-        maxOutputTokens,
-      },
-    });
+      const response = await ai.models.generateContent({
+        model: aiModel,
+        contents: data,
+        config: {
+          systemInstruction: prompt,
+          responseMimeType: 'application/json',
+          temperature: 0.2,
+          maxOutputTokens,
+          abortSignal: AbortSignal.timeout(AI_TIMEOUT_MS),
+        },
+      });
 
-    if (!response.text) {
+      if (!response.text) {
+        return null;
+      }
+
+      return JSON.parse(response.text) as T;
+    } catch (error) {
+      console.error('Error sending prompt:', error);
       return null;
     }
-
-    return JSON.parse(response.text) as T;
-  }
-
-  private weightedScore(
-    points: number,
-    totalPoints: number,
-    targetScore: number,
-  ) {
-    if (totalPoints <= 0) {
-      return 0;
-    }
-
-    return Math.round((points / totalPoints) * targetScore * 100) / 100;
   }
 
   private clampScore(score: number, maxScore: number) {

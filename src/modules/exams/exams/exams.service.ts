@@ -657,7 +657,10 @@ export class ExamsService {
       };
     }
 
-    const suggestion = await this.aiService.suggestAnswerScore(answer);
+    const suggestion = await this.aiService.suggestAnswerScore(
+      answer,
+      maxScore,
+    );
 
     if (!suggestion) {
       throw new BadRequestException(
@@ -771,10 +774,11 @@ export class ExamsService {
       const answer = submitted.get(examQuestion.id);
       const question = examQuestion.question;
 
-      const weightedPoints =
-        Math.round(
-          (examQuestion.points / (totalPoints || 0)) * exam.targetScore * 100,
-        ) / 100;
+      const weightedPoints = this.weightedScore(
+        examQuestion.points,
+        totalPoints,
+        exam.targetScore,
+      );
 
       const details = {
         number: index + 1,
@@ -1640,7 +1644,7 @@ export class ExamsService {
         where: { id: answerId },
         data: {
           score,
-          isCorrect: score === maxScore,
+          isCorrect: maxScore > 0 && score === maxScore,
           gradeStatus: GradeStatus.TEACHER_APPROVED,
           teacherFeedback: feedback,
         },

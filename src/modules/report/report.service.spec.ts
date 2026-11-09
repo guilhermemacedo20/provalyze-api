@@ -179,7 +179,9 @@ describe('ReportService', () => {
               gte: new Date('2025-01-01T03:00:00.000Z'),
               lt: new Date('2026-01-01T03:00:00.000Z'),
             },
-            student: { studentAssignments: { some: { classId: 'c1' } } },
+            student: {
+              studentAssignments: { some: { classId: 'c1', endedAt: null } },
+            },
             exam: { userId: '1', assignments: { some: { classId: 'c1' } } },
           },
         }),
