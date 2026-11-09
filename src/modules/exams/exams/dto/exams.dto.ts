@@ -65,6 +65,10 @@ export class SaveExamDto {
   @IsString({ each: true })
   classIds!: string[];
 
+  @IsOptional()
+  @IsBoolean()
+  autoSubmit?: boolean;
+
   // true = já publica ao salvar e false/omitido = rascunho.
   @IsOptional()
   @IsBoolean()

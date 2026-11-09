@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  GoneException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -18,7 +19,7 @@ import type { AuthenticatedRequest } from 'src/common/types/authenticated-reques
 import { AIService } from 'src/infra/ai/ai.service';
 import { LogsService } from 'src/infra/logs/logs.service';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
-import { EXAM_TOTAL_SCORE } from './exams.constants';
+import { EXAM_TOTAL_SCORE, SUBMIT_TOLERANCE_MS } from './exams.constants';
 import {
   SaveExamDto,
   SubmitExamDto,
@@ -245,6 +246,7 @@ function mapDetail(exam: ExamDetailRow, now: Date) {
     startsAt: exam.startsAt,
     endsAt: exam.endsAt,
     durationMinutes: exam.durationMinutes,
+    autoSubmit: exam.autoSubmit,
     targetScore: exam.targetScore,
     teacherName: exam.teacher.name,
     classes,
@@ -355,7 +357,10 @@ export class ExamsService {
 
     const expiresAt = this.expiresAt(exam, session.startedAt as Date);
 
-    if (session.startedAt && new Date() > expiresAt) {
+    if (
+      session.startedAt &&
+      Date.now() > expiresAt.getTime() + this.submitTolerance(exam)
+    ) {
       await this.prisma.examSession.update({
         where: { id: session.id },
         data: { status: SessionStatus.EXPIRED },
@@ -381,6 +386,7 @@ export class ExamsService {
       expiresAt,
       targetScore: exam.targetScore,
       durationMinutes: exam.durationMinutes,
+      autoSubmit: exam.autoSubmit,
       status: exam.status,
       questions: this.shuffle(examQuestions).map((examQuestion) => ({
         id: examQuestion.id,
@@ -411,29 +417,24 @@ export class ExamsService {
     await this.assertStudentInClass(userId, classId);
     const exam = await this.findAssignedExam(classId, examId);
 
-    const closed = this.closedExam(exam);
-    if (closed) {
-      return closed;
-    }
-
     const session = await this.prisma.examSession.findFirst({
       where: { examId, userId },
     });
 
+    if (session?.status === SessionStatus.FINISHED) {
+      return this.submittedResult(exam, session);
+    }
+    if (session?.status === SessionStatus.EXPIRED) {
+      throw new GoneException('O tempo da prova acabou.');
+    }
     if (!session || session.status !== SessionStatus.STARTED) {
       return this.blocked(exam, this.inactiveSessionMessage(session));
     }
 
-    const expiresAt = this.expiresAt(exam, session.startedAt as Date);
-
-    if (session.startedAt && new Date() > expiresAt) {
-      await this.prisma.examSession.update({
-        where: { id: session.id },
-        data: { status: SessionStatus.EXPIRED },
-      });
-
-      return this.blocked(exam, 'Prova expirada');
-    }
+    const deadline =
+      this.expiresAt(exam, session.startedAt as Date).getTime() +
+      this.submitTolerance(exam);
+    const expired = exam.status === ExamStatus.ENDED || Date.now() > deadline;
 
     const examQuestions = await this.prisma.examQuestion.findMany({
       where: { examId },
@@ -449,8 +450,18 @@ export class ExamsService {
     const score = graded.reduce((total, row) => total + row.score, 0);
     const finishedAt = new Date();
 
-    await this.prisma.$transaction([
-      this.prisma.answer.createMany({
+    const saved = await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.examSession.updateMany({
+        where: { id: session.id, status: SessionStatus.STARTED },
+        data: {
+          status: expired ? SessionStatus.EXPIRED : SessionStatus.FINISHED,
+          finishedAt,
+          score: expired ? null : score,
+        },
+      });
+      if (count === 0) return false;
+
+      await tx.answer.createMany({
         data: graded.map((row) => ({
           sessionId: row.sessionId,
           examQuestionId: row.examQuestionId,
@@ -459,16 +470,29 @@ export class ExamsService {
           score: row.score,
           gradeStatus: row.gradeStatus,
         })),
-      }),
-      this.prisma.examSession.update({
+      });
+      return true;
+    });
+
+    if (!saved) {
+      const current = await this.prisma.examSession.findUnique({
         where: { id: session.id },
-        data: {
-          status: SessionStatus.FINISHED,
-          finishedAt,
-          score,
-        },
-      }),
-    ]);
+      });
+      if (current?.status === SessionStatus.FINISHED) {
+        return this.submittedResult(exam, current);
+      }
+      throw new GoneException('O tempo da prova acabou.');
+    }
+
+    if (expired) {
+      await this.logs.audit(
+        `Enviou a prova ${exam.title} fora do prazo`,
+        userId,
+      );
+      throw new GoneException(
+        'O tempo da prova acabou. Suas respostas foram registradas, mas a entrega ficou fora do prazo.',
+      );
+    }
 
     await this.logs.audit(`Entregou a prova ${exam.title}`, userId);
 
@@ -660,6 +684,10 @@ export class ExamsService {
     }
   }
 
+  private submitTolerance(exam: Pick<Exam, 'autoSubmit'>) {
+    return exam.autoSubmit ? SUBMIT_TOLERANCE_MS : 0;
+  }
+
   private async findAssignedExam(classId: string, examId: string) {
     const assignment = await this.prisma.examAssignment.findFirst({
       where: { classId, examId },
@@ -818,9 +846,21 @@ export class ExamsService {
   }
 
   private async finishedExam(exam: Exam, session: ExamSession) {
+    return this.blocked(exam, 'Prova já finalizada', {
+      finished: true,
+      title: exam.title,
+      score: session.score,
+      targetScore: exam.targetScore,
+      startedAt: session.startedAt,
+      finishedAt: session.finishedAt,
+      review: await this.reviewAnswers(exam, session.id),
+    });
+  }
+
+  private async reviewAnswers(exam: Exam, sessionId: string) {
     const [answers, examQuestions] = await Promise.all([
       this.prisma.answer.findMany({
-        where: { sessionId: session.id },
+        where: { sessionId },
         include: {
           examQuestion: {
             include: {
@@ -851,44 +891,45 @@ export class ExamsService {
       (a, b) => a.examQuestion.order - b.examQuestion.order,
     );
 
-    return this.blocked(exam, 'Prova já finalizada', {
-      finished: true,
-      title: exam.title,
-      score: session.score,
-      targetScore: exam.targetScore,
-      startedAt: session.startedAt,
-      finishedAt: session.finishedAt,
-      review: ordered.map((answer, index) => {
-        const question = answer.examQuestion.question;
-        const chosen = question.questionOptions.find(
-          (option) => option.label === answer.content,
-        );
+    return ordered.map((answer, index) => {
+      const question = answer.examQuestion.question;
+      const chosen = question.questionOptions.find(
+        (option) => option.label === answer.content,
+      );
 
-        return {
-          examQuestionId: answer.examQuestionId,
-          type: question.type,
-          themeName: question.theme.name,
-          isCorrect: answer.isCorrect,
-          score: answer.score,
-          gradeStatus: answer.gradeStatus,
-          number: index + 1,
-          statement: question.statement,
-          maxScore: this.weightedScore(
-            answer.examQuestion.points,
-            totalPoints,
-            exam.targetScore,
-          ),
-          teacherFeedback: answer.teacherFeedback,
-          studentAnswer:
-            question.type === QuestionType.MULTIPLE_CHOICE
-              ? chosen
-                ? `${chosen.label}) ${chosen.text}`
-                : ''
-              : answer.content,
-          correctAnswer: this.correctAnswer(question),
-        };
-      }),
+      return {
+        examQuestionId: answer.examQuestionId,
+        type: question.type,
+        themeName: question.theme.name,
+        isCorrect: answer.isCorrect,
+        score: answer.score,
+        gradeStatus: answer.gradeStatus,
+        number: index + 1,
+        statement: question.statement,
+        maxScore: this.weightedScore(
+          answer.examQuestion.points,
+          totalPoints,
+          exam.targetScore,
+        ),
+        teacherFeedback: answer.teacherFeedback,
+        studentAnswer:
+          question.type === QuestionType.MULTIPLE_CHOICE
+            ? chosen
+              ? `${chosen.label}) ${chosen.text}`
+              : ''
+            : answer.content,
+        correctAnswer: this.correctAnswer(question),
+      };
     });
+  }
+
+  private async submittedResult(exam: Exam, session: ExamSession) {
+    return {
+      status: SessionStatus.FINISHED,
+      score: session.score,
+      questions: await this.reviewAnswers(exam, session.id),
+      finishedAt: session.finishedAt,
+    };
   }
 
   private blocked(
@@ -1124,6 +1165,7 @@ export class ExamsService {
         startsAt,
         endsAt,
         durationMinutes: dto.durationMinutes,
+        autoSubmit: dto.autoSubmit,
         targetScore: totalScore,
         status: dto.publish ? ExamStatus.PUBLISHED : ExamStatus.DRAFT,
         userId: user.id,
@@ -1209,6 +1251,7 @@ export class ExamsService {
           startsAt,
           endsAt,
           durationMinutes: dto.durationMinutes,
+          autoSubmit: dto.autoSubmit,
           targetScore: totalScore,
           status: dto.publish ? ExamStatus.PUBLISHED : ExamStatus.DRAFT,
           examQuestions: {

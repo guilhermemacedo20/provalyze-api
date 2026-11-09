@@ -223,6 +223,7 @@ model Exam {
   targetScore     Float
   status          ExamStatus @default(DRAFT)
   durationMinutes Int?
+  autoSubmit      Boolean    @default(true)
   userId          String
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @default(now()) @updatedAt

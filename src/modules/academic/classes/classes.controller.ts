@@ -39,7 +39,7 @@ export class ClassesController {
 
   @Roles('STUDENT')
   @Post('join')
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Throttle({ default: { limit: 10, ttl: 30_000 } })
   joinClass(@Req() req: any, @Body() joinClassDto: JoinClassDto) {
     return this.classesService.joinClass(req, joinClassDto.code);
   }
