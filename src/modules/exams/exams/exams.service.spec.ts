@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  GoneException,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -752,7 +753,7 @@ describe('ExamsService', () => {
       },
     ]);
     prismaMock.answer.createMany.mockResolvedValue({ count: 1 });
-    prismaMock.examSession.update.mockResolvedValue({});
+    prismaMock.examSession.updateMany.mockResolvedValue({ count: 1 });
 
     const result = await service.submitExam(
       { user: { id: 'student-1' } },
@@ -823,7 +824,7 @@ describe('ExamsService', () => {
       },
     ]);
     prismaMock.answer.createMany.mockResolvedValue({ count: 1 });
-    prismaMock.examSession.update.mockResolvedValue({});
+    prismaMock.examSession.updateMany.mockResolvedValue({ count: 1 });
 
     const result = await service.submitExam(
       { user: { id: 'student-1' } },
@@ -883,7 +884,7 @@ describe('ExamsService', () => {
       },
     ]);
     prismaMock.answer.createMany.mockResolvedValue({ count: 1 });
-    prismaMock.examSession.update.mockResolvedValue({});
+    prismaMock.examSession.updateMany.mockResolvedValue({ count: 1 });
 
     const result = await service.submitExam(
       { user: { id: 'student-1' } },
@@ -971,60 +972,152 @@ describe('ExamsService', () => {
 
   });
 
-  it('submitExam retorna indisponibilidade', async () => {
-    const startedAt = new Date();
-    const startsAt = new Date('2020-01-01T10:00:00.000Z');
-    const endsAt = new Date('2026-06-01T12:00:00.000Z');
-    prismaMock.class.findFirst.mockResolvedValue({ id: 'class-1' });
-    prismaMock.examAssignment.findFirst.mockResolvedValue({
-      exam: {
-        id: 'exam-1',
-        title: 'Prova',
-        startsAt,
-        endsAt,
-        status: ExamStatus.PUBLISHED,
-        durationMinutes: 60,
-        targetScore: 10,
-      },
-    });
-    prismaMock.examSession.findFirst.mockResolvedValue({
-      id: 'session-1',
-      status: SessionStatus.STARTED,
-      startedAt,
-    });
-    prismaMock.examQuestion.findMany.mockResolvedValue([
-      {
-        id: 'eq-1',
-        questionId: 'q-1',
-        order: 0,
-        points: 10,
-        question: {
-          type: QuestionType.MULTIPLE_CHOICE,
-          correctOption: 'A',
-          statement: '2+2?',
-          theme: { name: 'Aritmética' },
-          questionOptions: [{ id: 'opt-1', label: 'A', text: '4' }],
+  describe('submitExam fora do prazo e envio duplicado', () => {
+    const studentReq = { user: { id: 'student-1' } };
+    const body = { answers: [{ examQuestionId: 'eq-1', optionId: 'opt-1' }] };
+
+    function mockSubmit(session: Record<string, unknown>) {
+      prismaMock.class.findFirst.mockResolvedValue({ id: 'class-1' });
+      prismaMock.examAssignment.findFirst.mockResolvedValue({
+        exam: {
+          id: 'exam-1',
+          title: 'Prova',
+          startsAt: new Date('2026-10-26T10:00:00.000Z'),
+          endsAt: new Date('2026-10-26T18:00:00.000Z'),
+          status: ExamStatus.PUBLISHED,
+          durationMinutes: 60,
+          autoSubmit: true,
+          targetScore: 10,
         },
-      },
-    ]);
-    prismaMock.answer.createMany.mockResolvedValue({ count: 1 });
-    prismaMock.examSession.update.mockResolvedValue({});
-
-    const result = await service.submitExam(
-      { user: { id: 'student-1' } },
-      'class-1',
-      'exam-1',
-      {
-        answers: [{ examQuestionId: 'eq-1', optionId: 'opt-1' }],
-      },
-    );
-
-    expect(result).not.toHaveProperty('status', SessionStatus.FINISHED);
-
-    if ('available' in result) {
-      expect(result.available).toBe(false);
-      expect(result.endsAt).toBe(endsAt);
+      });
+      prismaMock.examSession.findFirst.mockResolvedValue({
+        id: 'session-1',
+        ...session,
+      });
+      prismaMock.examQuestion.findMany.mockResolvedValue([
+        {
+          id: 'eq-1',
+          questionId: 'q-1',
+          order: 0,
+          points: 10,
+          question: {
+            type: QuestionType.MULTIPLE_CHOICE,
+            correctOption: 'A',
+            statement: '2+2?',
+            theme: { name: 'Aritmética' },
+            questionOptions: [{ id: 'opt-1', label: 'A', text: '4' }],
+          },
+        },
+      ]);
+      prismaMock.answer.findMany.mockResolvedValue([]);
+      prismaMock.answer.createMany.mockResolvedValue({ count: 1 });
     }
+
+    it('aceita o envio dentro da tolerância de 90 s', async () => {
+      mockSubmit({
+        status: SessionStatus.STARTED,
+        startedAt: new Date('2026-10-26T10:59:00.000Z'),
+      });
+      prismaMock.examSession.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await service.submitExam(
+        studentReq,
+        'class-1',
+        'exam-1',
+        body,
+      );
+
+      expect(result).toHaveProperty('status', SessionStatus.FINISHED);
+      expect(prismaMock.examSession.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: SessionStatus.FINISHED,
+            score: 10,
+          }),
+        }),
+      );
+    });
+
+    it('salva as respostas como EXPIRED e responde 410 depois da tolerância', async () => {
+      mockSubmit({
+        status: SessionStatus.STARTED,
+        startedAt: new Date('2026-10-26T10:58:00.000Z'),
+      });
+      prismaMock.examSession.updateMany.mockResolvedValue({ count: 1 });
+
+      await expect(
+        service.submitExam(studentReq, 'class-1', 'exam-1', body),
+      ).rejects.toBeInstanceOf(GoneException);
+
+      expect(prismaMock.examSession.updateMany).toHaveBeenCalledWith({
+        where: { id: 'session-1', status: SessionStatus.STARTED },
+        data: expect.objectContaining({
+          status: SessionStatus.EXPIRED,
+          score: null,
+        }),
+      });
+      expect(prismaMock.answer.createMany).toHaveBeenCalled();
+    });
+
+    it('responde 410 quando a sessão já está expirada', async () => {
+      mockSubmit({
+        status: SessionStatus.EXPIRED,
+        startedAt: new Date('2026-10-26T10:00:00.000Z'),
+      });
+
+      await expect(
+        service.submitExam(studentReq, 'class-1', 'exam-1', body),
+      ).rejects.toBeInstanceOf(GoneException);
+      expect(prismaMock.answer.createMany).not.toHaveBeenCalled();
+    });
+
+    it('devolve o resultado salvo quando a prova já foi entregue', async () => {
+      mockSubmit({
+        status: SessionStatus.FINISHED,
+        startedAt: new Date('2026-10-26T11:30:00.000Z'),
+        finishedAt: new Date('2026-10-26T11:50:00.000Z'),
+        score: 10,
+      });
+
+      const result = await service.submitExam(
+        studentReq,
+        'class-1',
+        'exam-1',
+        body,
+      );
+
+      expect(result).toMatchObject({
+        status: SessionStatus.FINISHED,
+        score: 10,
+      });
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
+      expect(prismaMock.answer.createMany).not.toHaveBeenCalled();
+    });
+
+    it('não grava de novo quando dois envios chegam juntos', async () => {
+      mockSubmit({
+        status: SessionStatus.STARTED,
+        startedAt: new Date('2026-10-26T11:30:00.000Z'),
+      });
+      prismaMock.examSession.updateMany.mockResolvedValue({ count: 0 });
+      prismaMock.examSession.findUnique.mockResolvedValue({
+        id: 'session-1',
+        status: SessionStatus.FINISHED,
+        startedAt: new Date('2026-10-26T11:30:00.000Z'),
+        finishedAt: new Date('2026-10-26T11:50:00.000Z'),
+        score: 10,
+      });
+
+      const result = await service.submitExam(
+        studentReq,
+        'class-1',
+        'exam-1',
+        body,
+      );
+
+      expect(result).toHaveProperty('status', SessionStatus.FINISHED);
+      expect(prismaMock.answer.createMany).not.toHaveBeenCalled();
+    });
   });
 
   it('getCorrection exige prova entregue', async () => {
