@@ -77,6 +77,7 @@ export class SaveExamDto {
 
 export class SubmitExamAnswerDto {
   @IsString()
+  @IsNotEmpty()
   examQuestionId!: string;
 
   @IsOptional()
@@ -85,6 +86,7 @@ export class SubmitExamAnswerDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(10000)
   content?: string;
 }
 
@@ -100,6 +102,7 @@ export class EventDto {
   type!: ExamEventType;
 
   @IsString()
+  @IsNotEmpty()
   examQuestionId!: string;
 }
 
@@ -112,6 +115,7 @@ export class SubmitExamEventDto {
 export class GradeAnswerDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
+  @Max(1000)
   score!: number;
 
   @IsOptional()

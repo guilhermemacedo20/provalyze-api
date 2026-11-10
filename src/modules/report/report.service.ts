@@ -162,7 +162,11 @@ export class ReportService {
         : {}),
       ...(isStudent ? { userId: user.id } : {}),
       ...(classId && !isStudent
-        ? { student: { studentAssignments: { some: { classId } } } }
+        ? {
+            student: {
+              studentAssignments: { some: { classId, endedAt: null } },
+            },
+          }
         : {}),
       exam: {
         ...(isTeacher ? { userId: user.id } : {}),
@@ -255,7 +259,7 @@ export class ReportService {
               examId: { in: examIds },
               student: {
                 studentAssignments: {
-                  some: { classId: classId ?? { in: classIds } },
+                  some: { classId: classId ?? { in: classIds }, endedAt: null },
                 },
               },
             },
@@ -336,11 +340,7 @@ export class ReportService {
               },
             }
           : {},
-      select: {
-        id: true,
-        name: true,
-        subject: { select: { name: true } },
-      },
+      select: { id: true },
     });
 
     if (classId && !classes.find((schoolClass) => schoolClass.id === classId)) {
@@ -349,158 +349,12 @@ export class ReportService {
       );
     }
 
-    const classIds = classes.map((schoolClass) => schoolClass.id);
-    const exams =
-      classIds.length > 0
-        ? await this.prisma.exam.findMany({
-            where: {
-              status: { in: [ExamStatus.PUBLISHED, ExamStatus.ENDED] },
-              ...(user.role === Role.TEACHER ? { userId: user.id } : {}),
-              assignments: {
-                some: { classId: classId || { in: classIds } },
-              },
-              sessions: {
-                some: {
-                  status: SessionStatus.FINISHED,
-                },
-              },
-            },
-            select: {
-              title: true,
-              targetScore: true,
-              examQuestions: {
-                select: {
-                  points: true,
-                  question: {
-                    select: {
-                      statement: true,
-                      theme: { select: { name: true } },
-                    },
-                  },
-                  answers: {
-                    where: {
-                      gradeStatus: {
-                        in: [GradeStatus.AUTO, GradeStatus.TEACHER_APPROVED],
-                      },
-                      session: {
-                        status: SessionStatus.FINISHED,
-                        student: {
-                          studentAssignments: {
-                            some: {
-                              endedAt: null,
-                              classId: classId || { in: classIds },
-                            },
-                          },
-                        },
-                      },
-                    },
-                    select: {
-                      content: true,
-                      isCorrect: true,
-                      score: true,
-                    },
-                  },
-                },
-              },
-            },
-          })
-        : [];
+    const classIds = classId
+      ? [classId]
+      : classes.map((schoolClass) => schoolClass.id);
+    if (classIds.length === 0) return [];
 
-    const byTheme = new Map<
-      string,
-      {
-        examTitle: string;
-        statement: string;
-        points: number;
-        targetScore: number;
-        correctCount: number;
-        answerCount: number;
-        answers: { content: string; isCorrect: boolean; score: number }[];
-      }[]
-    >();
-
-    for (const exam of exams) {
-      for (const examQuestion of exam.examQuestions) {
-        if (examQuestion.answers.length === 0) continue;
-
-        const wrong = examQuestion.answers.filter(
-          (answer) => !answer.isCorrect,
-        );
-        const right = examQuestion.answers.filter((answer) => answer.isCorrect);
-        const name = examQuestion.question.theme.name;
-        const questions = byTheme.get(name) ?? [];
-        questions.push({
-          examTitle: exam.title,
-          statement: examQuestion.question.statement,
-          points: examQuestion.points,
-          targetScore: exam.targetScore,
-          correctCount: right.length,
-          answerCount: examQuestion.answers.length,
-          answers: [...wrong, ...right]
-            .slice(0, MAX_ANSWERS_PER_QUESTION)
-            .map((answer) => ({
-              content: answer.content,
-              isCorrect: answer.isCorrect,
-              score: answer.score,
-            })),
-        });
-        byTheme.set(name, questions);
-      }
-    }
-
-    const rankedThemes = [...byTheme.entries()]
-      .map(([name, questions]) => {
-        const answerCount = questions.reduce(
-          (total, question) => total + question.answerCount,
-          0,
-        );
-        const correctCount = questions.reduce(
-          (total, question) => total + question.correctCount,
-          0,
-        );
-        return {
-          name,
-          questions,
-          percent:
-            answerCount > 0
-              ? Math.round((correctCount / answerCount) * 100)
-              : 0,
-        };
-      })
-      .sort((a, b) => a.percent - b.percent)
-      .slice(0, 5);
-
-    const themes = rankedThemes.map(({ name, questions }) => ({
-      name,
-      questions,
-    }));
-
-    if (themes.length === 0) {
-      return [];
-    }
-
-    const gaps = await this.aiService.analyseClassTheme({
-      themes,
-    });
-
-    if (!gaps) {
-      throw new BadRequestException(
-        'Não foi possível identificar as lacunas dessa turma',
-      );
-    }
-
-    const percentByTheme = new Map(
-      rankedThemes.map((theme) => [
-        theme.name.trim().toLocaleLowerCase('pt-BR'),
-        theme.percent,
-      ]),
-    );
-
-    return gaps.slice(0, 5).map((gap) => ({
-      ...gap,
-      percent:
-        percentByTheme.get(gap.theme.trim().toLocaleLowerCase('pt-BR')) ?? 0,
-    }));
+    return this.gapSnapshot(user, classIds);
   }
 
   async listPedagogicalReports(req: any, classId?: string) {
@@ -655,7 +509,7 @@ export class ReportService {
     }
 
     if (hasGaps) {
-      content.gaps = await this.gapSnapshot(user, schoolClass.id);
+      content.gaps = await this.gapSnapshot(user, [schoolClass.id]);
     }
 
     const report = await this.prisma.pedagogicalReport.create({
@@ -956,12 +810,16 @@ export class ReportService {
     };
   }
 
-  private async gapSnapshot(user: { id: string; role: Role }, classId: string) {
+  private async gapSnapshot(
+    user: { id: string; role: Role },
+    classIds: string[],
+  ) {
     const exams = await this.prisma.exam.findMany({
       where: {
         status: { in: [ExamStatus.PUBLISHED, ExamStatus.ENDED] },
         ...(user.role === Role.TEACHER ? { userId: user.id } : {}),
-        assignments: { some: { classId } },
+        assignments: { some: { classId: { in: classIds } } },
+        sessions: { some: { status: SessionStatus.FINISHED } },
       },
       select: {
         title: true,
@@ -984,7 +842,7 @@ export class ReportService {
                   status: SessionStatus.FINISHED,
                   student: {
                     studentAssignments: {
-                      some: { endedAt: null, classId },
+                      some: { endedAt: null, classId: { in: classIds } },
                     },
                   },
                 },
