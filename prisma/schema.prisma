@@ -214,6 +214,7 @@ model StudentAssignment {
   userId    String
   createdAt DateTime  @default(now())
   endedAt   DateTime?
+  hiddenAt  DateTime?
 
   class   Class @relation(fields: [classId], references: [id], onDelete: Cascade)
   student User  @relation(fields: [userId], references: [id])

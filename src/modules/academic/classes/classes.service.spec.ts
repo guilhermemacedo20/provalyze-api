@@ -200,4 +200,65 @@ describe('ClassesService', () => {
     );
     expect(prismaMock.class.create).not.toHaveBeenCalled();
   });
+
+  describe('turmas ocultas do aluno', () => {
+    const student = { user: { id: 's1', role: Role.STUDENT } };
+
+    it('should mark a class as hidden for the student', async () => {
+      prismaMock.studentAssignment.updateMany.mockResolvedValue({ count: 1 });
+
+      await expect(
+        service.setClassHidden(student, 'c1', true),
+      ).resolves.toEqual({ hidden: true });
+
+      expect(prismaMock.studentAssignment.updateMany).toHaveBeenCalledWith({
+        where: { classId: 'c1', userId: 's1', endedAt: null },
+        data: { hiddenAt: expect.any(Date) },
+      });
+    });
+
+    it('should unhide a class clearing hiddenAt', async () => {
+      prismaMock.studentAssignment.updateMany.mockResolvedValue({ count: 1 });
+
+      await expect(
+        service.setClassHidden(student, 'c1', false),
+      ).resolves.toEqual({ hidden: false });
+
+      expect(prismaMock.studentAssignment.updateMany).toHaveBeenCalledWith({
+        where: { classId: 'c1', userId: 's1', endedAt: null },
+        data: { hiddenAt: null },
+      });
+    });
+
+    it('should throw when the student is not in the class', async () => {
+      prismaMock.studentAssignment.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.setClassHidden(student, 'other', true),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('should flag hidden classes in the student list', async () => {
+      prismaMock.class.findMany.mockResolvedValue([
+        {
+          id: 'c1',
+          name: 'Turma A',
+          subject: { name: 'Cálculo', course: { name: 'Engenharia' } },
+          teacherAssignments: [],
+          studentAssignments: [{ hiddenAt: new Date() }],
+        },
+        {
+          id: 'c2',
+          name: 'Turma B',
+          subject: { name: 'Física', course: { name: 'Engenharia' } },
+          teacherAssignments: [],
+          studentAssignments: [{ hiddenAt: null }],
+        },
+      ]);
+
+      const classes = await service.listStudentClasses(student);
+
+      expect(classes.map((c) => c.hidden)).toEqual([true, false]);
+    });
+  });
 });
