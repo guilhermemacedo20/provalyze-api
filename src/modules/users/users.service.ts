@@ -3,7 +3,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
-  UnauthorizedException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { CreateUserDto, UpdateUserDto } from './dto/users.dto';
 import { Prisma, Role } from '@prisma/client';
@@ -120,8 +120,14 @@ export class UsersService {
   async updateUser(req: any, id: string, updateUserDto: UpdateUserDto) {
     const user = req.user;
     const existing = await this.prisma.user.findUnique({ where: { id } });
-    if (!existing) {
+    if (!existing || existing.anonymizedAt) {
       throw new NotFoundException('Usuário não encontrado');
+    }
+
+    if (existing.role === Role.ADMIN && updateUserDto.role !== Role.ADMIN) {
+      await this.assertNotLastAdmin(
+        'Não é possível alterar o perfil do único administrador do sistema.',
+      );
     }
 
     if (user.role === Role.COORDINATOR) {
@@ -164,10 +170,12 @@ export class UsersService {
   }
 
   async deleteUser(req: any, id: string) {
-    const isAdmin = req.user.role === 'ADMIN';
+    const isAdmin = req.user.role === Role.ADMIN;
+    const isCoordinator = req.user.role === Role.COORDINATOR;
+    const isSelf = req.user.id === id;
 
-    if (!isAdmin && req.user.id !== id) {
-      throw new UnauthorizedException(
+    if (!isAdmin && !isCoordinator && !isSelf) {
+      throw new ForbiddenException(
         'Perfil de acesso sem permissão para realizar esse processo',
       );
     }
@@ -176,20 +184,25 @@ export class UsersService {
       where: { id },
     });
 
-    if (!existing) {
+    if (!existing || existing.anonymizedAt) {
       throw new NotFoundException('Usuário não encontrado');
     }
 
-    if (existing.role === Role.ADMIN) {
-      const activeAdminsCount = await this.prisma.user.count({
-        where: { role: Role.ADMIN, anonymizedAt: null },
-      });
+    if (
+      isCoordinator &&
+      !isSelf &&
+      existing.role !== Role.TEACHER &&
+      existing.role !== Role.STUDENT
+    ) {
+      throw new ForbiddenException(
+        'Usuário pode excluir apenas professor ou aluno',
+      );
+    }
 
-      if (activeAdminsCount <= 1) {
-        throw new BadRequestException(
-          'Não é possível excluir o único administrador do sistema.',
-        );
-      }
+    if (existing.role === Role.ADMIN) {
+      await this.assertNotLastAdmin(
+        'Não é possível excluir o único administrador do sistema.',
+      );
     }
 
     if (existing.role === Role.ADMIN || existing.role === Role.COORDINATOR) {
@@ -229,6 +242,16 @@ export class UsersService {
         select: { id: true },
       }),
     ]);
+  }
+
+  private async assertNotLastAdmin(message: string) {
+    const activeAdminsCount = await this.prisma.user.count({
+      where: { role: Role.ADMIN, anonymizedAt: null },
+    });
+
+    if (activeAdminsCount <= 1) {
+      throw new BadRequestException(message);
+    }
   }
 
   private async deleteStudent(student: { id: string; name: string }) {

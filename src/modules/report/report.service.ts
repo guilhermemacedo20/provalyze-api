@@ -3,7 +3,6 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import {
   ExamStatus,
@@ -224,7 +223,7 @@ export class ReportService {
     });
 
     if (classId && !classes.find((schoolClass) => schoolClass.id === classId)) {
-      throw new UnauthorizedException(
+      throw new ForbiddenException(
         'Usuário não possui permissão para visualizar esse analytics',
       );
     }
@@ -245,7 +244,7 @@ export class ReportService {
         : [];
 
     if (examId && !exams.some((exam) => exam.id === examId)) {
-      throw new UnauthorizedException(
+      throw new ForbiddenException(
         'Usuário não possui permissão para visualizar esse analytics',
       );
     }
@@ -344,7 +343,7 @@ export class ReportService {
     });
 
     if (classId && !classes.find((schoolClass) => schoolClass.id === classId)) {
-      throw new UnauthorizedException(
+      throw new ForbiddenException(
         'Usuário não possui permissão para visualizar esse analytics',
       );
     }
@@ -377,7 +376,7 @@ export class ReportService {
     });
 
     if (classId && !classes.some((schoolClass) => schoolClass.id === classId)) {
-      throw new UnauthorizedException(
+      throw new ForbiddenException(
         'Usuário não possui permissão para visualizar esse relatório',
       );
     }
@@ -396,14 +395,14 @@ export class ReportService {
       },
     });
 
-    const actualClass = await this.prisma.class.findFirst({
-      where: { id: classId },
-    });
+    const classNames = new Map(
+      classes.map((schoolClass) => [schoolClass.id, schoolClass.name]),
+    );
 
     return reports.map((report) => ({
       id: report.id,
       title: report.title,
-      className: actualClass?.name || 'Classe',
+      className: classNames.get(report.classId) ?? 'Turma',
       createdAt: report.createdAt,
       authorName: report.author.name,
       analysisType: report.analysisType,
@@ -482,7 +481,7 @@ export class ReportService {
 
     const schoolClass = classes.find((item) => item.id === dto.classId);
     if (!schoolClass) {
-      throw new UnauthorizedException(
+      throw new ForbiddenException(
         'Usuário não possui permissão para gerar esse relatório',
       );
     }
@@ -552,7 +551,7 @@ export class ReportService {
   async studentAnalytics(req: any, classId: string, studentId: string) {
     const user = req.user;
     if (user.role === Role.STUDENT && user.id !== studentId) {
-      throw new UnauthorizedException(
+      throw new ForbiddenException(
         'Usuário não possui permissão para visualizar esse analytics',
       );
     }
@@ -582,7 +581,7 @@ export class ReportService {
     });
 
     if (!schoolClass || !schoolClass.studentAssignments[0]) {
-      throw new UnauthorizedException(
+      throw new ForbiddenException(
         'Usuário não possui permissão para esse acesso',
       );
     }

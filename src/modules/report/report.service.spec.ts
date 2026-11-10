@@ -2,7 +2,6 @@ import {
   BadRequestException,
   ForbiddenException,
   NotFoundException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { ReportAnalysisType, Role } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
@@ -317,7 +316,7 @@ describe('ReportService', () => {
 
     await expect(
       service.classAnalytics(teacherReq, 'class'),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('classAnalytics calcula média e temas', async () => {
@@ -381,7 +380,7 @@ describe('ReportService', () => {
         classId: 'class-x',
         analysisType: ReportAnalysisType.PERFORMANCE,
       }),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('createPedagogicalReport persiste relatório de desempenho', async () => {
@@ -451,7 +450,7 @@ describe('ReportService', () => {
         'class-1',
         'student-2',
       ),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('classAnalytics nega exame fora do escopo', async () => {
@@ -464,7 +463,7 @@ describe('ReportService', () => {
 
     await expect(
       service.classAnalytics(teacherReq, 'class-1', 'exam-x'),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('classAnalytics retorna vazio quando professor não tem turmas', async () => {
