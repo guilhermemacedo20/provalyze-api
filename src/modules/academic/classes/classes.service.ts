@@ -88,7 +88,7 @@ export class ClassesService {
       where: isTeacher
         ? {
             teacherAssignments: {
-              some: { userId: user.id },
+              some: { userId: user.id, endedAt: null },
             },
           }
         : undefined,

@@ -3,7 +3,7 @@ import {
   ConflictException,
   GoneException,
   NotFoundException,
-  UnauthorizedException,
+  ForbiddenException,
 } from '@nestjs/common';
 import {
   ExamEventType,
@@ -242,7 +242,7 @@ describe('ExamsService', () => {
 
     await expect(
       service.getStudentClassExams({ user: { id: 'student-1' } }, 'class-x'),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('submitExamEvents exige sessão em andamento', async () => {

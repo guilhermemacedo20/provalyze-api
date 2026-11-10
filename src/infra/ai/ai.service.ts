@@ -1,12 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 
 const MAX_ANSWER_LENGTH = 500;
 const AI_TIMEOUT_MS = 30 * 1000;
-const GAPS_CACHE_TTL_MS = 60 * 60 * 1000;
-const GAPS_CACHE_MAX_ENTRIES = 100;
 
 const VALIDATE_ANSWER_PROMPT = `Você corrige uma resposta de prova.
 Leia a questão e a resposta do aluno. Devolva apenas JSON com:
@@ -157,12 +154,9 @@ export class AIService {
       })),
     }));
 
-    const data = JSON.stringify({ themes });
-    const key = createHash('sha256').update(data).digest('hex');
-
     const result = await this.sendPrompt<{ gaps: ClassGap[] }>(
       ANALYSE_CLASS_THEMES_PROMPT,
-      data,
+      JSON.stringify({ themes }),
       512,
     );
 
