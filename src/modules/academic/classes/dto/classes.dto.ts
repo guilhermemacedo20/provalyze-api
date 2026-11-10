@@ -1,4 +1,4 @@
-import { IsBoolean, IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
 import { Trim } from 'src/common/decorators/trim.decorator';
 
 export class CreateClassDto {
@@ -21,11 +21,6 @@ export class AddStudentDto {
   @IsString()
   @IsNotEmpty()
   studentId!: string;
-}
-
-export class SetClassVisibilityDto {
-  @IsBoolean()
-  hidden!: boolean;
 }
 
 export class JoinClassDto {

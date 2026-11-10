@@ -137,10 +137,6 @@ export class ClassesService {
           where: { endedAt: null },
           include: { teacher: { select: { name: true } } },
         },
-        studentAssignments: {
-          where: { userId: user.id, endedAt: null },
-          select: { hiddenAt: true },
-        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -152,35 +148,7 @@ export class ClassesService {
       subjectName: schoolClass.subject.name,
       courseName: schoolClass.subject.course.name,
       averageScore: null,
-      hidden: Boolean(schoolClass.studentAssignments[0]?.hiddenAt),
     }));
-  }
-
-  async setStudentClassVisibility(req: any, classId: string, hidden: boolean) {
-    const user = req.user;
-    if (user.role !== Role.STUDENT) {
-      throw new BadRequestException('Usuário não possui sala cadastrada');
-    }
-
-    const assignment = await this.prisma.studentAssignment.findFirst({
-      where: { classId, userId: user.id, endedAt: null },
-    });
-
-    if (!assignment) {
-      throw new NotFoundException('Turma não encontrada');
-    }
-
-    await this.prisma.studentAssignment.update({
-      where: { id: assignment.id },
-      data: { hiddenAt: hidden ? new Date() : null },
-    });
-
-    await this.logs.audit(
-      `${hidden ? 'Student hid class' : 'Student showed class'} ${classId}`,
-      user.id,
-    );
-
-    return { id: classId, hidden };
   }
 
   async joinClass(req: any, code: string) {
