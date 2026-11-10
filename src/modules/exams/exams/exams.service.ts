@@ -4,7 +4,7 @@ import {
   GoneException,
   Injectable,
   NotFoundException,
-  UnauthorizedException,
+  ForbiddenException,
 } from '@nestjs/common';
 import {
   Exam,
@@ -296,7 +296,7 @@ export class ExamsService {
     });
 
     if (!schoolClass) {
-      throw new UnauthorizedException('Aluno não está nessa turma');
+      throw new ForbiddenException('Aluno não está nessa turma');
     }
 
     return {
@@ -337,15 +337,7 @@ export class ExamsService {
     }
 
     if (!session) {
-      session = await this.prisma.examSession.create({
-        data: {
-          examId: exam.id,
-          userId,
-          status: SessionStatus.STARTED,
-          startedAt: new Date(),
-        },
-      });
-      await this.logs.audit(`Iniciou a prova ${exam.title}`, userId);
+      session = await this.startSession(exam, userId);
     }
 
     if (!session.startedAt) {
@@ -629,7 +621,7 @@ export class ExamsService {
     });
 
     if (!teacherExam) {
-      throw new UnauthorizedException(
+      throw new ForbiddenException(
         'Você não tem permissão para validar essa questão',
       );
     }
@@ -683,7 +675,32 @@ export class ExamsService {
     });
 
     if (!schoolClass) {
-      throw new UnauthorizedException('Aluno não está nessa turma');
+      throw new ForbiddenException('Aluno não está nessa turma');
+    }
+  }
+
+  private async startSession(exam: Exam, userId: string) {
+    try {
+      const session = await this.prisma.examSession.create({
+        data: {
+          examId: exam.id,
+          userId,
+          status: SessionStatus.STARTED,
+          startedAt: new Date(),
+        },
+      });
+      await this.logs.audit(`Iniciou a prova ${exam.title}`, userId);
+      return session;
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        return this.prisma.examSession.findUniqueOrThrow({
+          where: { examId_userId: { examId: exam.id, userId } },
+        });
+      }
+      throw error;
     }
   }
 

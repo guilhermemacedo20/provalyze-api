@@ -4,12 +4,18 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import { ClassesService } from './classes.service';
-import { CreateClassDto, AddStudentDto, JoinClassDto } from './dto/classes.dto';
+import {
+  CreateClassDto,
+  AddStudentDto,
+  JoinClassDto,
+  SetClassVisibilityDto,
+} from './dto/classes.dto';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt.guard';
 import { RolesGuard } from 'src/common/guards/role.guard';
@@ -35,6 +41,16 @@ export class ClassesController {
   @Get('student-classes')
   getStudentClass(@Req() req: any) {
     return this.classesService.listStudentClasses(req);
+  }
+
+  @Roles('STUDENT')
+  @Patch('student-classes/:id/visibility')
+  setStudentClassVisibility(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() dto: SetClassVisibilityDto,
+  ) {
+    return this.classesService.setStudentClassVisibility(req, id, dto.hidden);
   }
 
   @Roles('STUDENT')

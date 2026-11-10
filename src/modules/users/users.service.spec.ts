@@ -1,4 +1,4 @@
-import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { UsersService } from './users.service';
@@ -238,7 +238,7 @@ describe('UsersService', () => {
     it('não deixa um aluno excluir outro usuário', async () => {
       await expect(
         service.deleteUser(studentReq, 'outro'),
-      ).rejects.toBeInstanceOf(UnauthorizedException);
+      ).rejects.toBeInstanceOf(ForbiddenException);
       expect(prismaMock.user.delete).not.toHaveBeenCalled();
       expect(prismaMock.user.update).not.toHaveBeenCalled();
     });

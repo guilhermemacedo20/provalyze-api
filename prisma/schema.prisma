@@ -133,6 +133,9 @@ model Question {
   theme           Theme            @relation(fields: [themeId], references: [id], onDelete: Cascade)
   questionOptions QuestionOption[]
   examQuestions   ExamQuestion[]
+
+  @@index([userId])
+  @@index([themeId])
 }
 
 model QuestionImage {
@@ -200,6 +203,9 @@ model TeacherAssignment {
 
   class   Class @relation(fields: [classId], references: [id], onDelete: Cascade)
   teacher User  @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([classId])
 }
 
 model StudentAssignment {
@@ -208,9 +214,13 @@ model StudentAssignment {
   userId    String
   createdAt DateTime  @default(now())
   endedAt   DateTime?
+  hiddenAt  DateTime?
 
   class   Class @relation(fields: [classId], references: [id], onDelete: Cascade)
   student User  @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([classId])
 }
 
 // Exams
@@ -266,6 +276,7 @@ model ExamAssignment {
   class Class @relation(fields: [classId], references: [id], onDelete: Cascade)
 
   @@unique([examId, classId])
+  @@index([classId])
 }
 
 model ExamSession {
@@ -306,6 +317,7 @@ model Answer {
   examQuestion ExamQuestion @relation(fields: [examQuestionId], references: [id], onDelete: Cascade)
 
   @@unique([sessionId, examQuestionId])
+  @@index([examQuestionId])
 }
 
 model ExamEvent {
