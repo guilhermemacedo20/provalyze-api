@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Req,
   UseGuards,
@@ -42,6 +43,18 @@ export class ClassesController {
   @Throttle({ default: { limit: 10, ttl: 30_000 } })
   joinClass(@Req() req: any, @Body() joinClassDto: JoinClassDto) {
     return this.classesService.joinClass(req, joinClassDto.code);
+  }
+
+  @Roles('STUDENT')
+  @Patch(':id/hide')
+  hideClass(@Req() req: any, @Param('id') id: string) {
+    return this.classesService.setClassHidden(req, id, true);
+  }
+
+  @Roles('STUDENT')
+  @Patch(':id/unhide')
+  unhideClass(@Req() req: any, @Param('id') id: string) {
+    return this.classesService.setClassHidden(req, id, false);
   }
 
   @Get(':id')

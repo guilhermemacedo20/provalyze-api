@@ -137,6 +137,10 @@ export class ClassesService {
           where: { endedAt: null },
           include: { teacher: { select: { name: true } } },
         },
+        studentAssignments: {
+          where: { userId: user.id, endedAt: null },
+          select: { hiddenAt: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -148,7 +152,23 @@ export class ClassesService {
       subjectName: schoolClass.subject.name,
       courseName: schoolClass.subject.course.name,
       averageScore: null, // ainda não existe módulo de provas/notas no sistema
+      hidden: Boolean(schoolClass.studentAssignments[0]?.hiddenAt),
     }));
+  }
+
+  async setClassHidden(req: any, classId: string, hidden: boolean) {
+    const user = req.user;
+
+    const result = await this.prisma.studentAssignment.updateMany({
+      where: { classId, userId: user.id, endedAt: null },
+      data: { hiddenAt: hidden ? new Date() : null },
+    });
+
+    if (result.count === 0) {
+      throw new NotFoundException('Turma não encontrada');
+    }
+
+    return { hidden };
   }
 
   async joinClass(req: any, code: string) {
