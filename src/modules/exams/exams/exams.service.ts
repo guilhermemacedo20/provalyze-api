@@ -1576,6 +1576,7 @@ export class ExamsService {
           answerId: answer?.id ?? null,
           type: question.type,
           statement: question.statement,
+          imageUrl: question.imageUrl,
           themeName: question.theme.name,
           maxScore: this.weightedScore(
             examQuestion.points,
