@@ -65,7 +65,13 @@ const examDetailInclude = {
       question: {
         include: { theme: { select: { id: true, name: true } } },
       },
-      answers: { select: { isCorrect: true } },
+      answers: {
+        where: {
+          gradeStatus: { not: GradeStatus.PENDING },
+          session: { status: SessionStatus.FINISHED },
+        },
+        select: { isCorrect: true },
+      },
     },
   },
   assignments: {
@@ -500,6 +506,7 @@ export class ExamsService {
         themeName: row.themeName,
         number: row.number,
         statement: row.statement,
+        imageUrl: row.imageUrl,
         maxScore: row.maxScore,
         teacherFeedback: null,
         studentAnswer: row.studentAnswer,
@@ -800,6 +807,7 @@ export class ExamsService {
       const details = {
         number: index + 1,
         statement: question.statement,
+        imageUrl: question.imageUrl,
         maxScore: weightedPoints,
         correctAnswer: this.correctAnswer(question),
       };
@@ -844,7 +852,7 @@ export class ExamsService {
         gradeStatus: GradeStatus.AUTO,
         type: question.type,
         themeName: question.theme.name,
-        studentAnswer: option ? `${option.label}) ${option.text}` : '',
+        studentAnswer: option?.text ?? '',
         ...details,
       };
     });
@@ -863,7 +871,7 @@ export class ExamsService {
       (option) => option.label === question.correctOption,
     );
 
-    return correct ? `${correct.label}) ${correct.text}` : null;
+    return correct?.text ?? null;
   }
 
   private async finishedExam(exam: Exam, session: ExamSession) {
@@ -889,6 +897,7 @@ export class ExamsService {
                 select: {
                   type: true,
                   statement: true,
+                  imageUrl: true,
                   correctOption: true,
                   theme: { select: { name: true } },
                   questionOptions: { select: { label: true, text: true } },
@@ -927,6 +936,7 @@ export class ExamsService {
         gradeStatus: answer.gradeStatus,
         number: index + 1,
         statement: question.statement,
+        imageUrl: question.imageUrl,
         maxScore: this.weightedScore(
           answer.examQuestion.points,
           totalPoints,
@@ -935,9 +945,7 @@ export class ExamsService {
         teacherFeedback: answer.teacherFeedback,
         studentAnswer:
           question.type === QuestionType.MULTIPLE_CHOICE
-            ? chosen
-              ? `${chosen.label}) ${chosen.text}`
-              : ''
+            ? (chosen?.text ?? '')
             : answer.content,
         correctAnswer: this.correctAnswer(question),
       };
@@ -1410,9 +1418,13 @@ export class ExamsService {
     const finished = rows.filter(
       (r) => r.status === 'FINISHED' || r.status === 'GRADED',
     ).length;
-    const answers = rows.flatMap(
-      (row) => sessionByStudent.get(row.id)?.answers ?? [],
-    );
+    const answers = rows.flatMap((row) => {
+      const session = sessionByStudent.get(row.id);
+      if (session?.status !== SessionStatus.FINISHED) return [];
+      return session.answers.filter(
+        (answer) => answer.gradeStatus !== GradeStatus.PENDING,
+      );
+    });
 
     return {
       stats: {

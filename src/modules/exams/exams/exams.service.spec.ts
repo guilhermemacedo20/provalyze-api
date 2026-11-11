@@ -776,8 +776,8 @@ describe('ExamsService', () => {
         statement: '2+2?',
         maxScore: 10,
         teacherFeedback: null,
-        studentAnswer: 'A) 4',
-        correctAnswer: 'A) 4',
+        studentAnswer: '4',
+        correctAnswer: '4',
       });
     }
 
@@ -841,8 +841,8 @@ describe('ExamsService', () => {
       expect(result.score).toBe(0);
       expect(result.questions[0]).toMatchObject({
         isCorrect: false,
-        studentAnswer: 'B) 5',
-        correctAnswer: 'A) 4',
+        studentAnswer: '5',
+        correctAnswer: '4',
       });
     }
   });
@@ -965,8 +965,8 @@ describe('ExamsService', () => {
     };
 
     expect(review[0]).toMatchObject({
-      studentAnswer: 'B) 5',
-      correctAnswer: 'A) 4',
+      studentAnswer: '5',
+      correctAnswer: '4',
       maxScore: 10,
     });
 
