@@ -44,6 +44,37 @@ function roundScore(value: number | null) {
   return Math.round(value * 100) / 100;
 }
 
+function themeLabel(name: string) {
+  return name.trim().replace(/\s+/g, ' ');
+}
+
+function themeKey(name: string) {
+  return themeLabel(name).toLocaleLowerCase('pt-BR');
+}
+
+function themePercents(
+  answers: {
+    score: number;
+    examQuestion: { points: number; question: { theme: { name: string } } };
+  }[],
+) {
+  const totals = new Map<
+    string,
+    { name: string; score: number; points: number }
+  >();
+  for (const answer of answers) {
+    const name = themeLabel(answer.examQuestion.question.theme.name);
+    const current = totals.get(themeKey(name)) ?? { name, score: 0, points: 0 };
+    current.score += answer.score;
+    current.points += answer.examQuestion.points;
+    totals.set(themeKey(name), current);
+  }
+  return [...totals.values()].map(({ name, score, points }) => ({
+    name,
+    percent: points > 0 ? Math.round((score / points) * 100) : 0,
+  }));
+}
+
 function median(values: number[]) {
   if (values.length === 0) {
     return null;
@@ -289,26 +320,9 @@ export class ReportService {
       .filter((score): score is number => score != null);
 
     const correct = answers.filter((answer) => answer.isCorrect).length;
-    const totals = new Map<string, { score: number; points: number }>();
-
-    for (const answer of answers) {
-      const name = answer.examQuestion.question.theme.name;
-      const current = totals.get(name) ?? { score: 0, points: 0 };
-      current.score += answer.score;
-      current.points += answer.examQuestion.points;
-      totals.set(name, current);
-    }
-
-    const themes = [...totals.entries()]
-      .map(([name, total]) => ({
-        name,
-        percent:
-          total.points > 0 ? Math.round((total.score / total.points) * 100) : 0,
-      }))
-      .sort(
-        (a, b) =>
-          b.percent - a.percent || a.name.localeCompare(b.name, 'pt-BR'),
-      );
+    const themes = themePercents(answers).sort(
+      (a, b) => b.percent - a.percent || a.name.localeCompare(b.name, 'pt-BR'),
+    );
     const scoreResult =
       scores.reduce((total, score) => total + score, 0) / scores.length || 0;
 
@@ -632,27 +646,17 @@ export class ReportService {
       objective: { correct: 0, wrong: 0 },
       essay: { correct: 0, wrong: 0 },
     };
-    const totals = new Map<string, { score: number; points: number }>();
     for (const answer of answers) {
       const kind =
         answer.examQuestion.question.type === QuestionType.OPEN_ENDED
           ? 'essay'
           : 'objective';
       outcomes[kind][answer.isCorrect ? 'correct' : 'wrong'] += 1;
-      const name = answer.examQuestion.question.theme.name;
-      const current = totals.get(name) ?? { score: 0, points: 0 };
-      current.score += answer.score;
-      current.points += answer.examQuestion.points;
-      totals.set(name, current);
     }
 
-    const themes = [...totals.entries()]
-      .map(([name, total]) => ({
-        name,
-        percent:
-          total.points > 0 ? Math.round((total.score / total.points) * 100) : 0,
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    const themes = themePercents(answers).sort((a, b) =>
+      a.name.localeCompare(b.name, 'pt-BR'),
+    );
 
     return {
       studentName: student.name,
@@ -770,15 +774,6 @@ export class ReportService {
       .map((session) => session.score)
       .filter((score): score is number => score != null);
     const correct = answers.filter((answer) => answer.isCorrect).length;
-    const totals = new Map<string, { score: number; points: number }>();
-
-    for (const answer of answers) {
-      const name = answer.examQuestion.question.theme.name;
-      const current = totals.get(name) ?? { score: 0, points: 0 };
-      current.score += answer.score;
-      current.points += answer.examQuestion.points;
-      totals.set(name, current);
-    }
 
     return {
       average: scores.length
@@ -792,18 +787,10 @@ export class ReportService {
       hitRate: answers.length
         ? Math.round((correct / answers.length) * 100)
         : null,
-      themes: [...totals.entries()]
-        .map(([name, total]) => ({
-          name,
-          percent:
-            total.points > 0
-              ? Math.round((total.score / total.points) * 100)
-              : 0,
-        }))
-        .sort(
-          (a, b) =>
-            b.percent - a.percent || a.name.localeCompare(b.name, 'pt-BR'),
-        ),
+      themes: themePercents(answers).sort(
+        (a, b) =>
+          b.percent - a.percent || a.name.localeCompare(b.name, 'pt-BR'),
+      ),
       students: [...studentsById.values()]
         .map((student) => ({
           ...student,
@@ -871,6 +858,7 @@ export class ReportService {
         answers: { content: string; isCorrect: boolean; score: number }[];
       }[]
     >();
+    const labels = new Map<string, string>();
 
     for (const exam of exams) {
       for (const examQuestion of exam.examQuestions) {
@@ -879,7 +867,9 @@ export class ReportService {
           (answer) => !answer.isCorrect,
         );
         const right = examQuestion.answers.filter((answer) => answer.isCorrect);
-        const name = examQuestion.question.theme.name;
+        const label = themeLabel(examQuestion.question.theme.name);
+        const name = themeKey(label);
+        if (!labels.has(name)) labels.set(name, label);
         const questions = byTheme.get(name) ?? [];
         questions.push({
           examTitle: exam.title,
@@ -911,7 +901,7 @@ export class ReportService {
           0,
         );
         return {
-          name,
+          name: labels.get(name) ?? name,
           questions,
           percent:
             answerCount > 0
@@ -935,16 +925,12 @@ export class ReportService {
     }
 
     const percentByTheme = new Map(
-      rankedThemes.map((theme) => [
-        theme.name.trim().toLocaleLowerCase('pt-BR'),
-        theme.percent,
-      ]),
+      rankedThemes.map((theme) => [themeKey(theme.name), theme.percent]),
     );
 
     return gaps.slice(0, 5).map((gap) => ({
       ...gap,
-      percent:
-        percentByTheme.get(gap.theme.trim().toLocaleLowerCase('pt-BR')) ?? 0,
+      percent: percentByTheme.get(themeKey(gap.theme)) ?? 0,
     }));
   }
 

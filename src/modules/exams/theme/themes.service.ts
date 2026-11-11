@@ -3,9 +3,20 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { CreateThemeDto } from './dto/themes.dto';
 import { LogsService } from 'src/infra/logs/logs.service';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
+
+function duplicatedName(error: unknown): never {
+  if (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === 'P2002'
+  ) {
+    throw new ConflictException('Você já tem um tema com esse nome');
+  }
+  throw error;
+}
 
 @Injectable()
 export class ThemeService {
@@ -16,12 +27,14 @@ export class ThemeService {
 
   async createTheme(req: any, createThemeDto: CreateThemeDto) {
     const user = req.user;
-    const themeCreated = await this.prisma.theme.create({
-      data: {
-        name: createThemeDto.name,
-        userId: user.id,
-      },
-    });
+    const themeCreated = await this.prisma.theme
+      .create({
+        data: {
+          name: createThemeDto.name,
+          userId: user.id,
+        },
+      })
+      .catch(duplicatedName);
 
     await this.logs.audit(`Theme Created ${themeCreated.id}`, user.id);
 
@@ -63,12 +76,14 @@ export class ThemeService {
       throw new NotFoundException('Tema não encontrado');
     }
     await this.logs.audit(`Theme Updated ${existing.id}`, user.id);
-    return this.prisma.theme.update({
-      where: { id },
-      data: {
-        name: updateThemeDto.name,
-      },
-    });
+    return this.prisma.theme
+      .update({
+        where: { id },
+        data: {
+          name: updateThemeDto.name,
+        },
+      })
+      .catch(duplicatedName);
   }
 
   async deleteTheme(req: any, id: string) {
