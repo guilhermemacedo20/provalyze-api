@@ -9,26 +9,22 @@ import {
   RegisterDto,
 } from './dto/auth.dto';
 import { JwtAuthGuard } from 'src/common/guards/jwt.guard';
-import { Throttle } from '@nestjs/throttler';
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('login')
-  @Throttle({ default: { limit: 10, ttl: 30_000 } })
   login(@Body() body: LoginDto) {
     return this.authService.loginUser(body);
   }
 
   @Post('forgot-password')
-  @Throttle({ default: { limit: 5, ttl: 30_000 } })
   forgotPassword(@Body() body: ForgotPasswordDto) {
     return this.authService.forgotPassword(body);
   }
 
   @Post('reset-password')
-  @Throttle({ default: { limit: 5, ttl: 30_000 } })
   resetPassword(@Body() body: ResetPasswordDto) {
     return this.authService.resetPassword(body);
   }
@@ -40,7 +36,6 @@ export class AuthController {
   }
 
   @Post('/register')
-  @Throttle({ default: { limit: 5, ttl: 30_000 } })
   registerUser(@Body() registerUser: RegisterDto) {
     return this.authService.registerUser(registerUser);
   }

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -305,6 +306,16 @@ export class ClassesService {
     if (!existing) {
       throw new NotFoundException('Turma não encontrada');
     }
+
+    const sessions = await this.prisma.examSession.count({
+      where: { exam: { assignments: { some: { classId: id } } } },
+    });
+    if (sessions > 0) {
+      throw new ConflictException(
+        'Essa turma já tem provas realizadas e não pode ser excluída',
+      );
+    }
+
     await this.logs.audit(`Class Deleted ${id}`, req.user.id);
     return this.prisma.class.delete({ where: { id } });
   }

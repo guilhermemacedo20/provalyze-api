@@ -280,13 +280,15 @@ export class UsersService {
 
     const renamedReports = reports.flatMap((report) => {
       const content = report.content as {
-        students?: { name: string }[];
+        students?: { id?: string; name: string }[];
       } | null;
-      if (!content?.students?.some((s) => s.name === student.name)) {
+      const isStudent = (s: { id?: string; name: string }) =>
+        s.id ? s.id === id : s.name === student.name;
+      if (!content?.students?.some(isStudent)) {
         return [];
       }
       const students = content.students.map((s) =>
-        s.name === student.name ? { ...s, name: 'Usuário removido' } : s,
+        isStudent(s) ? { ...s, name: 'Usuário removido' } : s,
       );
       return [
         this.prisma.pedagogicalReport.update({

@@ -77,6 +77,7 @@ export class AuthService {
         registrationNumber: user.registrationNumber,
         termsAcceptedAt: user.termsAcceptedAt,
         termsVersion: user.termsVersion,
+        requiresTermsAcceptance: user.termsVersion !== TERMS_VERSION,
       },
     };
   }
@@ -152,7 +153,8 @@ export class AuthService {
 
     assertPasswordStrength(data.newPassword);
 
-    const needsTerms = !user.termsAcceptedAt;
+    const needsTerms =
+      !user.termsAcceptedAt || user.termsVersion !== TERMS_VERSION;
 
     if (needsTerms && data.acceptTerms !== true) {
       throw new BadRequestException(
@@ -322,7 +324,10 @@ export class AuthService {
       throw new UnauthorizedException('Usuário não encontrado');
     }
 
-    return user;
+    return {
+      ...user,
+      requiresTermsAcceptance: user.termsVersion !== TERMS_VERSION,
+    };
   }
 
   async exportMe(actualUser: { id: string }) {

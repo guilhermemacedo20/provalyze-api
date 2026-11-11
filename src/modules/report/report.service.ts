@@ -25,6 +25,7 @@ type ReportContent = {
   hitRate: number | null;
   themes: { name: string; percent: number }[];
   students: {
+    id: string;
     name: string;
     exams: { title: string; score: number | null }[];
   }[];
@@ -746,10 +747,15 @@ export class ReportService {
 
     const studentsById = new Map<
       string,
-      { name: string; exams: { title: string; score: number | null }[] }
+      {
+        id: string;
+        name: string;
+        exams: { title: string; score: number | null }[];
+      }
     >();
     for (const session of sessions) {
       const current = studentsById.get(session.student.id) ?? {
+        id: session.student.id,
         name: session.student.name,
         exams: [],
       };

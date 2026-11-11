@@ -88,6 +88,17 @@ export class SubjectsService {
       throw new NotFoundException('Matéria não encontrada');
     }
 
+    const sessions = await this.prisma.examSession.count({
+      where: {
+        exam: { assignments: { some: { class: { subjectId } } } },
+      },
+    });
+    if (sessions > 0) {
+      throw new ConflictException(
+        'Essa matéria tem turmas com provas realizadas e não pode ser excluída',
+      );
+    }
+
     await this.logs.audit(`Subject deleted ${existing.id}`, req.user.id);
 
     return this.prisma.subject.delete({ where: { id: subjectId } });

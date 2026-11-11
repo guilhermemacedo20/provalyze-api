@@ -256,6 +256,7 @@ describe('Auth - integração (API + service + banco)', () => {
       registrationNumber: null,
       termsAcceptedAt: expect.any(String),
       termsVersion: TERMS_VERSION,
+      requiresTermsAcceptance: false,
     });
   });
 

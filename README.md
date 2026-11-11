@@ -27,7 +27,6 @@ Versões do repositório.
 | ESLint                                                               | 9.18.0                           | Lint                                           |
 | Jest                                                                 | 30.0.0                           | Testes                                         |
 | Google GenAi                                                         | 1.0.0                            | IA                                             |
-| Throttler                                                            | 6.7.1                            | Rate limiting                                  |
 | Helmet                                                               | 8.3.0                            | Previnir injeção de script e ataques no header |
 
 Pipe global: `whitelist`, `transform`, `forbidNonWhitelisted`. Auth JWT (`@nestjs/jwt` + Passport) quando o módulo de auth estiver ativo.

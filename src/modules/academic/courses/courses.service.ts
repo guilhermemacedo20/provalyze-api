@@ -68,6 +68,19 @@ export class CoursesService {
       throw new NotFoundException('Curso não encontrado');
     }
 
+    const sessions = await this.prisma.examSession.count({
+      where: {
+        exam: {
+          assignments: { some: { class: { subject: { courseId: id } } } },
+        },
+      },
+    });
+    if (sessions > 0) {
+      throw new ConflictException(
+        'Esse curso tem turmas com provas realizadas e não pode ser excluído',
+      );
+    }
+
     await this.logs.audit(`Course deleted ${existing.id}`, req.user.id);
 
     return this.prisma.course.delete({ where: { id } });

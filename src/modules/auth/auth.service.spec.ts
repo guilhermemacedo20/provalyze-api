@@ -56,6 +56,7 @@ describe('AuthService', () => {
         registrationNumber: null,
         termsAcceptedAt: acceptedAt,
         termsVersion: TERMS_VERSION,
+        requiresTermsAcceptance: false,
       },
     });
 
@@ -436,6 +437,7 @@ describe('AuthService', () => {
       registrationNumber: null,
       termsAcceptedAt: acceptedAt,
       termsVersion: TERMS_VERSION,
+      requiresTermsAcceptance: false,
     });
 
     expect(prismaMock.user.findUnique).toHaveBeenCalledWith({
