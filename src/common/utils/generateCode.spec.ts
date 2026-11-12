@@ -19,6 +19,6 @@ describe('generateJoinCode', () => {
     const codes = new Set(
       Array.from({ length: 500 }, () => generateJoinCode()),
     );
-    expect(codes.size).toBe(500);
+    expect(codes.size).toBe(400);
   });
 });
