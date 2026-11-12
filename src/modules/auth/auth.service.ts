@@ -381,7 +381,7 @@ export class AuthService {
       throw new UnauthorizedException('Usuário não encontrado');
     }
 
-    this.logs.audit('Export user data ', user.id);
+    await this.logs.audit('Export user data ', user.id);
 
     return { exportedAt: new Date(), ...user };
   }

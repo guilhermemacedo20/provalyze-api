@@ -1,8 +1,7 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 
-
-// Configura as variáveis de ambiente dos testes de integração ANTES de a aplicação ser carregada. 
+// Configura as variáveis de ambiente dos testes de integração ANTES de a aplicação ser carregada.
 const DEFAULT_TEST_DATABASE_URL =
   'postgresql://educacao:educacao@localhost:5432/educacao_provas_test?schema=public';
 

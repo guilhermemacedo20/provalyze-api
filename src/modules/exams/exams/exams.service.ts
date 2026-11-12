@@ -566,7 +566,7 @@ export class ExamsService {
         type: body.event.type,
       },
     });
-    this.logs.audit(
+    await this.logs.audit(
       `Registrou evento ${event.type} na questão ${examQuestion.questionId}`,
       userId,
     );

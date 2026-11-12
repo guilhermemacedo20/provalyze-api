@@ -14,7 +14,7 @@ Versões do repositório.
 
 | Tecnologia                                                           | Versão                           | Uso                                            |
 | -------------------------------------------------------------------- | -------------------------------- | ---------------------------------------------- |
-| Node.js                                                              | 20+                              | Runtime                                        |
+| Node.js                                                              | 24                               | Runtime                                        |
 | NestJS (`@nestjs/common`, `core`, `platform-express`,`config`,`jwt`) | 11.0.x                           | HTTP, módulos                                  |
 | TypeScript                                                           | 5.7.3                            | Tipagem                                        |
 | Prisma                                                               | 6.19.3                           | ORM e migrations                               |

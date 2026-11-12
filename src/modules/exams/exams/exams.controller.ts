@@ -54,7 +54,7 @@ export class ExamsController {
     return this.examsService.getCorrection(req, id, studentId);
   }
 
-    @Patch('answers/:answerId/grade')
+  @Patch('answers/:answerId/grade')
   gradeAnswer(
     @Req() req: AuthenticatedRequest,
     @Param('answerId') answerId: string,
