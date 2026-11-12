@@ -23,7 +23,7 @@ export class LogsService {
           actorId: actorId,
         },
       });
-    } catch (error) {
+    } catch {
       console.info(`Ocorreu um erro ao gerar o log ${action} de ${actorId}`);
     }
   }

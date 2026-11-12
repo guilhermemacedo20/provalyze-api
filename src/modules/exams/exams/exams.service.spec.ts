@@ -891,7 +891,9 @@ describe('ExamsService', () => {
       'class-1',
       'exam-1',
       {
-        answers: [{ examQuestionId: 'eq-1', content: '  Função que se chama  ' }],
+        answers: [
+          { examQuestionId: 'eq-1', content: '  Função que se chama  ' },
+        ],
       },
     );
 
@@ -969,7 +971,6 @@ describe('ExamsService', () => {
       correctAnswer: '4',
       maxScore: 10,
     });
-
   });
 
   describe('submitExam fora do prazo e envio duplicado', () => {

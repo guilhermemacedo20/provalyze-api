@@ -40,7 +40,7 @@ export class MailService {
         return;
       }
     } catch (err) {
-      this.logs.audit('', `Ocorreu um erro ao enviar o e-mail: ${err}`);
+      await this.logs.audit('', `Ocorreu um erro ao enviar o e-mail: ${err}`);
       return { message: `Ocorreu um erro ao enviar o e-mail: ${err}` };
     }
   }
@@ -53,7 +53,7 @@ export class MailService {
       console.info('Configurações do .env não foram definidas');
       return;
     }
-    
+
     try {
       const response = await fetch('https://api.resend.com/emails', {
         method: 'POST',
@@ -80,7 +80,7 @@ export class MailService {
         return;
       }
     } catch (err) {
-      this.logs.audit('', `Ocorreu um erro ao enviar o e-mail: ${err}`);
+      await this.logs.audit('', `Ocorreu um erro ao enviar o e-mail: ${err}`);
       return { message: `Ocorreu um erro ao enviar o e-mail: ${err}` };
     }
   }

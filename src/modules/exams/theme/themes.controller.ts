@@ -16,7 +16,7 @@ import { JwtAuthGuard } from 'src/common/guards/jwt.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 
 @Controller('themes')
-@UseGuards(JwtAuthGuard,RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('TEACHER')
 export class ThemeController {
   constructor(private readonly themeService: ThemeService) {}
