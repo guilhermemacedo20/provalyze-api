@@ -6,6 +6,7 @@ import {
   Req,
   Post,
   Body,
+  Query,
 } from '@nestjs/common';
 import { ExamsService } from './exams.service';
 import { Roles } from 'src/common/decorators/roles.decorator';
@@ -24,8 +25,9 @@ export class ExamsStudentsController {
     @Req() req: any,
     @Param('classId') classId: string,
     @Param('examId') examId: string,
+    @Query('browserId') browserId?: string,
   ) {
-    return this.examsService.getStudentExam(req, classId, examId);
+    return this.examsService.getStudentExam(req, classId, examId, browserId);
   }
 
   @Get(':classId')
