@@ -536,7 +536,7 @@ export class ReportService {
       },
       include: { author: { select: { name: true } } },
     });
-    this.logs.audit(`Create pedagogical report ${report.id}`, user.id);
+    await this.logs.audit(`Create pedagogical report ${report.id}`, user.id);
     return {
       id: report.id,
       title: report.title,
@@ -557,7 +557,7 @@ export class ReportService {
     if (!report) {
       throw new NotFoundException('Relatório não encontrado');
     } else {
-      this.logs.audit(`Exclude pedagogical report ${report.id}`, user.id);
+      await this.logs.audit(`Exclude pedagogical report ${report.id}`, user.id);
       await this.prisma.pedagogicalReport.delete({ where: { id: report.id } });
     }
     return { report: report.id, message: 'Excluido com sucesso' };

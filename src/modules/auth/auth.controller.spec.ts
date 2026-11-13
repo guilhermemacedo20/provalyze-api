@@ -46,7 +46,7 @@ describe('AuthController', () => {
 
     expect(result.accessToken).toBe('token');
     expect(result.user.email).toBe('ana@escola.edu.br');
-    
+
     expect(jwt.sign).toHaveBeenCalledWith({
       id: '1',
       email: 'ana@escola.edu.br',

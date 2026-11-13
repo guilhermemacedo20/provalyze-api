@@ -38,9 +38,7 @@ describe('RolesGuard', () => {
   it('should deny a role that only contains the required role as a substring', () => {
     reflector.getAllAndOverride.mockReturnValue(['ADMIN']);
 
-    expect(guard.canActivate(contextWith({ role: 'SUPER_ADMIN' }))).toBe(
-      false,
-    );
+    expect(guard.canActivate(contextWith({ role: 'SUPER_ADMIN' }))).toBe(false);
     expect(guard.canActivate(contextWith({ role: 'ADMIN_JR' }))).toBe(false);
   });
 

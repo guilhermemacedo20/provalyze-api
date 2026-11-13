@@ -120,8 +120,8 @@ describe('Persistência acadêmica - integração (Prisma + PostgreSQL de teste)
     await expect(removeAdmin).rejects.toThrow(
       'Não é possível remover o único administrador',
     );
-    await expect(
-      prisma.user.count({ where: { role: 'ADMIN' } }),
-    ).resolves.toBe(1);
+    await expect(prisma.user.count({ where: { role: 'ADMIN' } })).resolves.toBe(
+      1,
+    );
   });
 });

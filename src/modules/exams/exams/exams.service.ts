@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import {
   Exam,
+  ExamEventType,
   ExamSession,
   ExamStatus,
   GradeStatus,
@@ -320,7 +321,12 @@ export class ExamsService {
     };
   }
 
-  async getStudentExam(req: any, classId: string, examId: string) {
+  async getStudentExam(
+    req: any,
+    classId: string,
+    examId: string,
+    browserId?: string,
+  ) {
     const userId = req.user.id;
     await this.assertStudentInClass(userId, classId);
     const exam = await this.findAssignedExam(classId, examId);
@@ -367,6 +373,8 @@ export class ExamsService {
       return this.blocked(exam, 'Tempo da prova esgotado');
     }
 
+    await this.trackBrowser(session, browserId, userId);
+
     const examQuestions = await this.prisma.examQuestion.findMany({
       where: { examId },
       orderBy: { order: 'asc' },
@@ -403,6 +411,34 @@ export class ExamsService {
         ),
       })),
     };
+  }
+
+  private async trackBrowser(
+    session: ExamSession,
+    browserId: string | undefined,
+    userId: string,
+  ) {
+    const id = typeof browserId === 'string' ? browserId.trim() : '';
+    if (!id || id.length > 64 || session.browserId === id) {
+      return;
+    }
+
+    await this.prisma.examSession.update({
+      where: { id: session.id },
+      data: { browserId: id },
+    });
+
+    if (!session.browserId) {
+      return;
+    }
+
+    await this.prisma.examEvent.create({
+      data: { sessionId: session.id, type: ExamEventType.BROWSER_CHANGE },
+    });
+    await this.logs.audit(
+      `Abriu a prova ${session.examId} em outro navegador`,
+      userId,
+    );
   }
 
   async submitExam(
@@ -566,7 +602,7 @@ export class ExamsService {
         type: body.event.type,
       },
     });
-    this.logs.audit(
+    await this.logs.audit(
       `Registrou evento ${event.type} na questão ${examQuestion.questionId}`,
       userId,
     );
@@ -1387,6 +1423,15 @@ export class ExamsService {
 
     const sessionByStudent = new Map(sessions.map((s) => [s.userId, s]));
     const students = examStudents(exam.assignments, sessions);
+    const now = Date.now();
+    const timeIsUp = (session: (typeof sessions)[number] | undefined) =>
+      Boolean(
+        session?.status === SessionStatus.STARTED &&
+        session.startedAt &&
+        now >
+          this.expiresAt(exam, session.startedAt).getTime() +
+            this.submitTolerance(exam),
+      );
 
     const rows = [...students.entries()]
       .filter(([, student]) => !classId || student.classId === classId)
@@ -1405,7 +1450,7 @@ export class ExamsService {
           name: student.name,
           classId: student.classId,
           className: student.className,
-          status: studentStatus(session),
+          status: timeIsUp(session) ? 'EXPIRED' : studentStatus(session),
           score: session?.score ?? null,
           durationMinutes: minutes,
         };
@@ -1575,8 +1620,9 @@ export class ExamsService {
           id: event.id,
           type: event.type,
           createdAt: event.createdAt,
-          questionNumber:
-            numberByExamQuestion.get(event.examQuestionId) ?? null,
+          questionNumber: event.examQuestionId
+            ? (numberByExamQuestion.get(event.examQuestionId) ?? null)
+            : null,
         })),
       },
       questions: exam.examQuestions.map((examQuestion, index) => {

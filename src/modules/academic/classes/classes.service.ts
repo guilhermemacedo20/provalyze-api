@@ -82,6 +82,23 @@ export class ClassesService {
     return classCreated;
   }
 
+  async resetJoinCode(req: any, id: string) {
+    await this.assertTeacherOwnClass(req.user, id);
+
+    const existing = await this.prisma.class.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException('Turma não encontrada');
+    }
+
+    const joinCode = await this.generateJoinCode();
+    await this.logs.audit(`Class join code reset ${id}`, req.user.id);
+    return this.prisma.class.update({
+      where: { id },
+      data: { joinCode },
+      select: { id: true, joinCode: true },
+    });
+  }
+
   async listClasses(req: any) {
     const user = req.user;
     const isTeacher = user.role === Role.TEACHER;

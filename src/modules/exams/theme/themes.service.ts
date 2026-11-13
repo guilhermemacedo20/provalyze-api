@@ -100,7 +100,7 @@ export class ThemeService {
     const usedInExam = await this.prisma.examQuestion.count({
       where: { question: { themeId: id } },
     });
-    
+
     if (usedInExam > 0) {
       throw new ConflictException(
         'Esse tema tem questões usadas em provas e não pode ser excluído',
