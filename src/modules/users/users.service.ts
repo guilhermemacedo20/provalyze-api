@@ -229,6 +229,10 @@ export class UsersService {
     }
 
     return this.prisma.$transaction([
+      this.prisma.teacherAssignment.updateMany({
+        where: { userId: id, endedAt: null },
+        data: { endedAt: new Date() },
+      }),
       this.prisma.passwordResetToken.deleteMany({ where: { userId: id } }),
       this.prisma.user.update({
         where: { id },
@@ -300,7 +304,10 @@ export class UsersService {
 
     await this.prisma.$transaction([
       ...renamedReports,
-      this.prisma.studentAssignment.deleteMany({ where: { userId: id } }),
+      this.prisma.studentAssignment.updateMany({
+        where: { userId: id, endedAt: null },
+        data: { endedAt: new Date() },
+      }),
       this.prisma.passwordResetToken.deleteMany({ where: { userId: id } }),
       this.prisma.user.update({
         where: { id },
