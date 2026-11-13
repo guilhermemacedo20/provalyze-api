@@ -40,6 +40,7 @@ enum ExamEventType {
   TAB_SWITCH
   WINDOW_BLUR
   CONTEXT_MENU
+  BROWSER_CHANGE
 }
 
 enum ReportAnalysisType {
@@ -287,6 +288,7 @@ model ExamSession {
   finishedAt DateTime?
   status     SessionStatus @default(PENDING)
   score      Float?
+  browserId  String?
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @default(now()) @updatedAt
 
@@ -323,12 +325,12 @@ model Answer {
 model ExamEvent {
   id             String        @id @default(cuid())
   sessionId      String
-  examQuestionId String
+  examQuestionId String?
   type           ExamEventType
   createdAt      DateTime      @default(now())
 
-  session      ExamSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  examQuestion ExamQuestion @relation(fields: [examQuestionId], references: [id], onDelete: Cascade)
+  session      ExamSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  examQuestion ExamQuestion? @relation(fields: [examQuestionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, createdAt])
   @@index([examQuestionId])
