@@ -37,6 +37,10 @@ describe('UsersService', () => {
       },
       select: { id: true },
     });
+    expect(prismaMock.teacherAssignment.updateMany).toHaveBeenCalledWith({
+      where: { userId: '1', endedAt: null },
+      data: { endedAt: expect.any(Date) },
+    });
 
     expect(prismaMock.user.count).not.toHaveBeenCalled();
   });
@@ -214,9 +218,11 @@ describe('UsersService', () => {
           },
         },
       });
-      expect(prismaMock.studentAssignment.deleteMany).toHaveBeenCalledWith({
-        where: { userId: 's1' },
+      expect(prismaMock.studentAssignment.updateMany).toHaveBeenCalledWith({
+        where: { userId: 's1', endedAt: null },
+        data: { endedAt: expect.any(Date) },
       });
+      expect(prismaMock.studentAssignment.deleteMany).not.toHaveBeenCalled();
       expect(prismaMock.passwordResetToken.deleteMany).toHaveBeenCalledWith({
         where: { userId: 's1' },
       });
