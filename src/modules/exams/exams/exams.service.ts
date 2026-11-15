@@ -311,13 +311,22 @@ export class ExamsService {
       className: schoolClass.name,
       subjectName: schoolClass.subject.name,
       courseName: schoolClass.subject.course.name,
-      exams: schoolClass.examAssignments.map((assignment) =>
-        this.toStudentExam(
-          schoolClass,
-          assignment.exam,
-          assignment.exam.sessions[0],
+      exams: schoolClass.examAssignments
+        .map((assignment) =>
+          this.toStudentExam(
+            schoolClass,
+            assignment.exam,
+            assignment.exam.sessions[0],
+          ),
+        )
+        .filter(
+          (exam) =>
+            !(
+              exam.finished &&
+              (exam.sessionStatus === null ||
+                exam.sessionStatus === SessionStatus.PENDING)
+            ),
         ),
-      ),
     };
   }
 
