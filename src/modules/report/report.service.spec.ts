@@ -47,6 +47,7 @@ describe('ReportService', () => {
         { id: 'c1', name: 'Turma A', subject: { name: 'Eng. Software' } },
       ]);
       prismaMock.examSession.findMany.mockResolvedValue([]);
+      prismaMock.exam.findMany.mockResolvedValue([]);
     });
 
     it('retorna os cards do admin sem filtro de período', async () => {
@@ -116,7 +117,14 @@ describe('ReportService', () => {
 
     it('retorna cards do aluno e próximas provas sem filtro de período', async () => {
       prismaMock.examSession.count.mockResolvedValue(2);
-      prismaMock.exam.count.mockResolvedValue(1);
+      prismaMock.exam.findMany.mockResolvedValue([
+        {
+          endsAt: new Date('2099-01-01T00:00:00.000Z'),
+          durationMinutes: 60,
+          autoSubmit: true,
+          sessions: [],
+        },
+      ]);
       prismaMock.examSession.aggregate.mockResolvedValue({
         _avg: { score: 6.2 },
       });
@@ -135,7 +143,7 @@ describe('ReportService', () => {
           hitRate: null,
         }),
       );
-      const [[upcoming]] = prismaMock.exam.count.mock.calls as [
+      const [[upcoming]] = prismaMock.exam.findMany.mock.calls as [
         [{ where: object }],
       ];
       expect(upcoming.where).not.toHaveProperty('startsAt');
@@ -179,7 +187,7 @@ describe('ReportService', () => {
               lt: new Date('2026-01-01T03:00:00.000Z'),
             },
             student: {
-              studentAssignments: { some: { classId: 'c1', endedAt: null } },
+              studentAssignments: { some: { classId: 'c1' } },
             },
             exam: { userId: '1', assignments: { some: { classId: 'c1' } } },
           },
@@ -597,6 +605,7 @@ describe('ReportService', () => {
         score: 8.5,
         finishedAt: new Date('2026-03-01'),
         exam: { title: 'Prova 1' },
+        answers: [],
       },
     ]);
     prismaMock.answer.findMany.mockResolvedValue([
@@ -677,6 +686,7 @@ describe('ReportService', () => {
         score: 7,
         finishedAt: new Date('2026-03-01'),
         exam: { title: 'Prova 1' },
+        answers: [],
       },
     ]);
     prismaMock.answer.findMany.mockResolvedValue([

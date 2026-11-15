@@ -18,6 +18,7 @@ import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { CreatePedagogicalReportDto } from './dto/create-pedagogical-report.dto';
 import { LogsService } from 'src/infra/logs/logs.service';
 import { DashboardQueryDto } from './dto/dashboard.dto';
+import { sessionTimeIsUp } from 'src/modules/exams/exams/exams.service';
 
 type ReportContent = {
   average: number | null;
@@ -195,7 +196,7 @@ export class ReportService {
       ...(classId && !isStudent
         ? {
             student: {
-              studentAssignments: { some: { classId, endedAt: null } },
+              studentAssignments: { some: { classId } },
             },
           }
         : {}),
@@ -290,7 +291,7 @@ export class ReportService {
               examId: { in: examIds },
               student: {
                 studentAssignments: {
-                  some: { classId: classId ?? { in: classIds }, endedAt: null },
+                  some: { classId: classId ?? { in: classIds } },
                 },
               },
             },
@@ -618,6 +619,7 @@ export class ReportService {
           score: true,
           finishedAt: true,
           exam: { select: { title: true } },
+          answers: { select: { gradeStatus: true } },
         },
       }),
       this.prisma.answer.findMany({
@@ -666,12 +668,18 @@ export class ReportService {
       finishedExams: exams.length,
       themes,
       answers: outcomes,
-      exams: exams.map((session) => ({
-        title: session.exam.title,
-        subjectName: schoolClass.subject.name,
-        finishedAt: session.finishedAt,
-        score: session.score,
-      })),
+      exams: exams.map((session) => {
+        const pending = session.answers.some(
+          (answer) => answer.gradeStatus === GradeStatus.PENDING,
+        );
+        return {
+          title: session.exam.title,
+          subjectName: schoolClass.subject.name,
+          finishedAt: session.finishedAt,
+          score: pending ? null : session.score,
+          pending,
+        };
+      }),
     };
   }
 
@@ -721,7 +729,7 @@ export class ReportService {
               examId: { in: examIds },
               student: {
                 studentAssignments: {
-                  some: { classId, endedAt: null },
+                  some: { classId },
                 },
               },
             },
@@ -834,7 +842,7 @@ export class ReportService {
                   status: SessionStatus.FINISHED,
                   student: {
                     studentAssignments: {
-                      some: { endedAt: null, classId: { in: classIds } },
+                      some: { classId: { in: classIds } },
                     },
                   },
                 },
@@ -1007,11 +1015,12 @@ export class ReportService {
     classId?: string,
     subjectId?: string,
   ) {
-    const [finishedExams, upcomingExams, averageResult] = await Promise.all([
+    const [finishedExams, openExams, averageResult] = await Promise.all([
       this.prisma.examSession.count({ where: sessions }),
-      this.prisma.exam.count({
+      this.prisma.exam.findMany({
         where: {
           status: ExamStatus.PUBLISHED,
+          endsAt: { gt: new Date() },
           assignments: {
             some: {
               ...(classId ? { classId } : {}),
@@ -1021,7 +1030,21 @@ export class ReportService {
               },
             },
           },
-          sessions: { none: { userId, status: SessionStatus.FINISHED } },
+          sessions: {
+            none: {
+              userId,
+              status: { in: [SessionStatus.FINISHED, SessionStatus.EXPIRED] },
+            },
+          },
+        },
+        select: {
+          endsAt: true,
+          durationMinutes: true,
+          autoSubmit: true,
+          sessions: {
+            where: { userId },
+            select: { status: true, startedAt: true },
+          },
         },
       }),
       this.prisma.examSession.aggregate({
@@ -1029,6 +1052,10 @@ export class ReportService {
         _avg: { score: true },
       }),
     ]);
+
+    const upcomingExams = openExams.filter(
+      (exam) => !sessionTimeIsUp(exam, exam.sessions[0]),
+    ).length;
 
     return {
       role: Role.STUDENT,

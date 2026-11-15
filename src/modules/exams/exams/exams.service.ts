@@ -109,6 +109,35 @@ export function effectiveExamStatus(
   return status;
 }
 
+export function examDeadline(
+  exam: Pick<Exam, 'endsAt' | 'durationMinutes'>,
+  startedAt: Date,
+) {
+  if (!exam.durationMinutes || exam.durationMinutes <= 0) {
+    return exam.endsAt;
+  }
+
+  const durationEnd = new Date(
+    startedAt.getTime() + exam.durationMinutes * 60 * 1000,
+  );
+
+  return durationEnd < exam.endsAt ? durationEnd : exam.endsAt;
+}
+
+export function sessionTimeIsUp(
+  exam: Pick<Exam, 'endsAt' | 'durationMinutes' | 'autoSubmit'>,
+  session: Pick<ExamSession, 'status' | 'startedAt'> | null | undefined,
+  now = Date.now(),
+) {
+  return Boolean(
+    session?.status === SessionStatus.STARTED &&
+    session.startedAt &&
+    now >
+      examDeadline(exam, session.startedAt).getTime() +
+        (exam.autoSubmit ? SUBMIT_TOLERANCE_MS : 0),
+  );
+}
+
 function studentStatus(
   session:
     | {
@@ -762,7 +791,7 @@ export class ExamsService {
 
   private async findAssignedExam(classId: string, examId: string) {
     const assignment = await this.prisma.examAssignment.findFirst({
-      where: { classId, examId },
+      where: { classId, examId, exam: { status: { not: ExamStatus.DRAFT } } },
       select: { exam: true },
     });
 
@@ -802,6 +831,7 @@ export class ExamsService {
     const finished =
       session?.status === SessionStatus.FINISHED ||
       session?.status === SessionStatus.EXPIRED ||
+      sessionTimeIsUp(exam, session, now.getTime()) ||
       exam.status === ExamStatus.ENDED ||
       now > exam.endsAt;
 
@@ -1073,15 +1103,7 @@ export class ExamsService {
     exam: Pick<Exam, 'endsAt' | 'durationMinutes'>,
     startedAt: Date,
   ) {
-    if (!exam.durationMinutes || exam.durationMinutes <= 0) {
-      return exam.endsAt;
-    }
-
-    const durationEnd = new Date(
-      startedAt.getTime() + exam.durationMinutes * 60 * 1000,
-    );
-
-    return durationEnd < exam.endsAt ? durationEnd : exam.endsAt;
+    return examDeadline(exam, startedAt);
   }
 
   private closedExam(
@@ -1433,14 +1455,6 @@ export class ExamsService {
     const sessionByStudent = new Map(sessions.map((s) => [s.userId, s]));
     const students = examStudents(exam.assignments, sessions);
     const now = Date.now();
-    const timeIsUp = (session: (typeof sessions)[number] | undefined) =>
-      Boolean(
-        session?.status === SessionStatus.STARTED &&
-        session.startedAt &&
-        now >
-          this.expiresAt(exam, session.startedAt).getTime() +
-            this.submitTolerance(exam),
-      );
 
     const rows = [...students.entries()]
       .filter(([, student]) => !classId || student.classId === classId)
@@ -1459,7 +1473,9 @@ export class ExamsService {
           name: student.name,
           classId: student.classId,
           className: student.className,
-          status: timeIsUp(session) ? 'EXPIRED' : studentStatus(session),
+          status: sessionTimeIsUp(exam, session, now)
+            ? 'EXPIRED'
+            : studentStatus(session),
           score: session?.score ?? null,
           durationMinutes: minutes,
         };
@@ -1467,6 +1483,7 @@ export class ExamsService {
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
 
     const scores = rows
+      .filter((r) => r.status === 'GRADED')
       .map((r) => r.score)
       .filter((score): score is number => score !== null);
     const finished = rows.filter(
@@ -1515,12 +1532,16 @@ export class ExamsService {
       where: { id, userId: req.user.id },
       select: {
         title: true,
+        endsAt: true,
+        durationMinutes: true,
+        autoSubmit: true,
         assignments: { select: examClassSelect },
         sessions: {
           select: {
             userId: true,
             status: true,
             score: true,
+            startedAt: true,
             finishedAt: true,
             student: { select: { name: true } },
             answers: { select: { gradeStatus: true } },
@@ -1542,7 +1563,9 @@ export class ExamsService {
           classId: student.classId,
           className: student.className,
           name: student.name,
-          status: studentStatus(session),
+          status: sessionTimeIsUp(exam, session)
+            ? 'EXPIRED'
+            : studentStatus(session),
           score: session?.score ?? null,
           deliveredAt: session?.finishedAt ?? null,
         };
