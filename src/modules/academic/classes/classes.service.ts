@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { CreateClassDto } from './dto/classes.dto';
-import { Role } from '@prisma/client';
+import { JoinRequestStatus, Role } from '@prisma/client';
 import { LogsService } from 'src/infra/logs/logs.service';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { generateJoinCode } from 'src/common/utils/generateCode';
@@ -119,6 +119,11 @@ export class ClassesService {
         studentAssignments: {
           where: { endedAt: null },
         },
+        _count: {
+          select: {
+            joinRequests: { where: { status: JoinRequestStatus.PENDING } },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -131,6 +136,7 @@ export class ClassesService {
       subjectName: schoolClass.subject.name,
       courseName: schoolClass.subject.course.name,
       studentsCount: schoolClass.studentAssignments.length,
+      pendingRequestsCount: schoolClass._count?.joinRequests ?? 0,
       averageScore: null, // ainda não existe módulo de provas/notas no sistema
     }));
   }
@@ -212,11 +218,149 @@ export class ClassesService {
       throw new BadRequestException('Você já está nessa sala');
     }
 
-    await this.logs.audit(`Student joined class ${schoolClass.id}`, user.id);
-
-    return this.prisma.studentAssignment.create({
-      data: { classId: schoolClass.id, userId: user.id },
+    const previous = await this.prisma.classJoinRequest.findUnique({
+      where: {
+        classId_userId: { classId: schoolClass.id, userId: user.id },
+      },
     });
+
+    if (previous?.status === JoinRequestStatus.PENDING) {
+      throw new BadRequestException(
+        'Você já solicitou entrada nessa turma. Aguarde a aprovação do professor.',
+      );
+    }
+
+    await this.logs.audit(
+      `Student requested to join class ${schoolClass.id}`,
+      user.id,
+    );
+
+    if (previous) {
+      await this.prisma.classJoinRequest.update({
+        where: { id: previous.id },
+        data: {
+          status: JoinRequestStatus.PENDING,
+          createdAt: new Date(),
+          decidedAt: null,
+          decidedById: null,
+        },
+      });
+    } else {
+      await this.prisma.classJoinRequest.create({
+        data: { classId: schoolClass.id, userId: user.id },
+      });
+    }
+
+    return { status: JoinRequestStatus.PENDING };
+  }
+
+  async listJoinRequests(req: any, classId: string) {
+    await this.assertTeacherOwnClass(req.user, classId);
+
+    const schoolClass = await this.prisma.class.findUnique({
+      where: { id: classId },
+    });
+    if (!schoolClass) {
+      throw new NotFoundException('Turma não encontrada');
+    }
+
+    const requests = await this.prisma.classJoinRequest.findMany({
+      where: { classId, status: JoinRequestStatus.PENDING },
+      include: {
+        student: { select: { id: true, name: true, email: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return requests.map((request) => ({
+      id: request.id,
+      createdAt: request.createdAt,
+      student: {
+        id: request.student.id,
+        name: request.student.name,
+        email: request.student.email,
+      },
+    }));
+  }
+
+  async approveJoinRequests(req: any, classId: string, requestIds: string[]) {
+    await this.assertTeacherOwnClass(req.user, classId);
+
+    const requests = await this.prisma.classJoinRequest.findMany({
+      where: {
+        id: { in: requestIds },
+        classId,
+        status: JoinRequestStatus.PENDING,
+      },
+    });
+    if (requests.length === 0) {
+      throw new NotFoundException('Nenhuma solicitação pendente encontrada');
+    }
+
+    const alreadyEnrolled = await this.prisma.studentAssignment.findMany({
+      where: {
+        classId,
+        userId: { in: requests.map((request) => request.userId) },
+        endedAt: null,
+      },
+      select: { userId: true },
+    });
+    const enrolledIds = new Set(alreadyEnrolled.map((item) => item.userId));
+    const toEnroll = requests.filter(
+      (request) => !enrolledIds.has(request.userId),
+    );
+
+    await this.prisma.$transaction([
+      this.prisma.studentAssignment.createMany({
+        data: toEnroll.map((request) => ({
+          classId,
+          userId: request.userId,
+        })),
+      }),
+      this.prisma.classJoinRequest.updateMany({
+        where: { id: { in: requests.map((request) => request.id) } },
+        data: {
+          status: JoinRequestStatus.APPROVED,
+          decidedAt: new Date(),
+          decidedById: req.user.id,
+        },
+      }),
+    ]);
+
+    await this.logs.audit(
+      `Join requests approved ${classId}: ${requests.length}`,
+      req.user.id,
+    );
+
+    return { approved: requests.length };
+  }
+
+  async rejectJoinRequests(req: any, classId: string, requestIds: string[]) {
+    await this.assertTeacherOwnClass(req.user, classId);
+
+    const result = await this.prisma.classJoinRequest.updateMany({
+      where: {
+        id: { in: requestIds },
+        classId,
+        status: JoinRequestStatus.PENDING,
+      },
+      data: {
+        status: JoinRequestStatus.REJECTED,
+        decidedAt: new Date(),
+        decidedById: req.user.id,
+      },
+    });
+
+    if (result.count === 0) {
+      throw new NotFoundException('Nenhuma solicitação pendente encontrada');
+    }
+
+    await this.logs.audit(
+      `Join requests rejected ${classId}: ${result.count}`,
+      req.user.id,
+    );
+
+    return { rejected: result.count };
   }
 
   async getClass(req: any, id: string) {
@@ -289,6 +433,17 @@ export class ClassesService {
       `Student added ${classId} and student: ${studentId}`,
       req.user.id,
     );
+
+    // se o aluno tinha uma solicitação pendente, ela deixa de estar pendente
+    await this.prisma.classJoinRequest.updateMany({
+      where: { classId, userId: studentId, status: JoinRequestStatus.PENDING },
+      data: {
+        status: JoinRequestStatus.APPROVED,
+        decidedAt: new Date(),
+        decidedById: req.user.id,
+      },
+    });
+
     return this.prisma.studentAssignment.create({
       data: { classId, userId: studentId },
     });

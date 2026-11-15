@@ -261,4 +261,249 @@ describe('ClassesService', () => {
       expect(classes.map((c) => c.hidden)).toEqual([true, false]);
     });
   });
+
+    describe('solicitações de entrada na turma', () => {
+    const student = { user: { id: 's1', role: Role.STUDENT } };
+    const ownTeacher = { user: { id: 't1', role: Role.TEACHER } };
+
+    describe('joinClass', () => {
+      it('should create a pending request instead of enrolling the student', async () => {
+        prismaMock.class.findUnique.mockResolvedValue({ id: 'c1' });
+        prismaMock.studentAssignment.findFirst.mockResolvedValue(null);
+        prismaMock.classJoinRequest.findUnique.mockResolvedValue(null);
+        prismaMock.classJoinRequest.create.mockResolvedValue({ id: 'r1' });
+
+        await expect(service.joinClass(student, 'ABC123')).resolves.toEqual({
+          status: 'PENDING',
+        });
+
+        expect(prismaMock.classJoinRequest.create).toHaveBeenCalledWith({
+          data: { classId: 'c1', userId: 's1' },
+        });
+        expect(prismaMock.studentAssignment.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject an invalid join code', async () => {
+        prismaMock.class.findUnique.mockResolvedValue(null);
+
+        await expect(
+          service.joinClass(student, 'zzz'),
+        ).rejects.toBeInstanceOf(NotFoundException);
+        expect(prismaMock.classJoinRequest.create).not.toHaveBeenCalled();
+      });
+
+      it('should not accept a request from someone already in the class', async () => {
+        prismaMock.class.findUnique.mockResolvedValue({ id: 'c1' });
+        prismaMock.studentAssignment.findFirst.mockResolvedValue({ id: 'a1' });
+
+        const joined = service.joinClass(student, 'abc123');
+
+        await expect(joined).rejects.toBeInstanceOf(BadRequestException);
+        await expect(joined).rejects.toThrow('Você já está nessa sala');
+        expect(prismaMock.classJoinRequest.create).not.toHaveBeenCalled();
+      });
+
+      it('should not duplicate a request that is still pending', async () => {
+        prismaMock.class.findUnique.mockResolvedValue({ id: 'c1' });
+        prismaMock.studentAssignment.findFirst.mockResolvedValue(null);
+        prismaMock.classJoinRequest.findUnique.mockResolvedValue({
+          id: 'r1',
+          status: 'PENDING',
+        });
+
+        const joined = service.joinClass(student, 'abc123');
+
+        await expect(joined).rejects.toBeInstanceOf(BadRequestException);
+        await expect(joined).rejects.toThrow(
+          'Você já solicitou entrada nessa turma. Aguarde a aprovação do professor.',
+        );
+        expect(prismaMock.classJoinRequest.create).not.toHaveBeenCalled();
+        expect(prismaMock.classJoinRequest.update).not.toHaveBeenCalled();
+      });
+
+      it('should reopen a rejected request as pending', async () => {
+        prismaMock.class.findUnique.mockResolvedValue({ id: 'c1' });
+        prismaMock.studentAssignment.findFirst.mockResolvedValue(null);
+        prismaMock.classJoinRequest.findUnique.mockResolvedValue({
+          id: 'r1',
+          status: 'REJECTED',
+        });
+
+        await expect(service.joinClass(student, 'abc123')).resolves.toEqual({
+          status: 'PENDING',
+        });
+
+        expect(prismaMock.classJoinRequest.update).toHaveBeenCalledWith({
+          where: { id: 'r1' },
+          data: expect.objectContaining({
+            status: 'PENDING',
+            decidedAt: null,
+            decidedById: null,
+          }),
+        });
+        expect(prismaMock.classJoinRequest.create).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('listJoinRequests', () => {
+      it('should list the pending requests of the class', async () => {
+        const createdAt = new Date('2026-11-14T12:00:00.000Z');
+        prismaMock.teacherAssignment.findFirst.mockResolvedValue({ id: 'ta1' });
+        prismaMock.class.findUnique.mockResolvedValue({ id: 'c1' });
+        prismaMock.classJoinRequest.findMany.mockResolvedValue([
+          {
+            id: 'r1',
+            createdAt,
+            student: { id: 's1', name: 'Ana', email: 'ana@escola.edu.br' },
+          },
+        ]);
+
+        await expect(
+          service.listJoinRequests(ownTeacher, 'c1'),
+        ).resolves.toEqual([
+          {
+            id: 'r1',
+            createdAt,
+            student: { id: 's1', name: 'Ana', email: 'ana@escola.edu.br' },
+          },
+        ]);
+
+        expect(prismaMock.classJoinRequest.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: { classId: 'c1', status: 'PENDING' },
+          }),
+        );
+      });
+
+      it('should not let a teacher list requests of another teacher class', async () => {
+        prismaMock.teacherAssignment.findFirst.mockResolvedValue(null);
+
+        await expect(
+          service.listJoinRequests(ownTeacher, 'c2'),
+        ).rejects.toBeInstanceOf(NotFoundException);
+        expect(prismaMock.classJoinRequest.findMany).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('approveJoinRequests', () => {
+      it('should enroll the selected students and mark the requests as approved', async () => {
+        prismaMock.classJoinRequest.findMany.mockResolvedValue([
+          { id: 'r1', userId: 's1' },
+          { id: 'r2', userId: 's2' },
+        ]);
+        prismaMock.studentAssignment.findMany.mockResolvedValue([]);
+
+        await expect(
+          service.approveJoinRequests(admin, 'c1', ['r1', 'r2']),
+        ).resolves.toEqual({ approved: 2 });
+
+        expect(prismaMock.studentAssignment.createMany).toHaveBeenCalledWith({
+          data: [
+            { classId: 'c1', userId: 's1' },
+            { classId: 'c1', userId: 's2' },
+          ],
+        });
+        expect(prismaMock.classJoinRequest.updateMany).toHaveBeenCalledWith({
+          where: { id: { in: ['r1', 'r2'] } },
+          data: expect.objectContaining({
+            status: 'APPROVED',
+            decidedById: '1',
+          }),
+        });
+      });
+
+      it('should not enroll twice a student who is already in the class', async () => {
+        prismaMock.classJoinRequest.findMany.mockResolvedValue([
+          { id: 'r1', userId: 's1' },
+          { id: 'r2', userId: 's2' },
+        ]);
+        prismaMock.studentAssignment.findMany.mockResolvedValue([
+          { userId: 's2' },
+        ]);
+
+        await service.approveJoinRequests(admin, 'c1', ['r1', 'r2']);
+
+        expect(prismaMock.studentAssignment.createMany).toHaveBeenCalledWith({
+          data: [{ classId: 'c1', userId: 's1' }],
+        });
+      });
+
+      it('should fail when there is no pending request to approve', async () => {
+        prismaMock.classJoinRequest.findMany.mockResolvedValue([]);
+
+        await expect(
+          service.approveJoinRequests(admin, 'c1', ['r9']),
+        ).rejects.toBeInstanceOf(NotFoundException);
+        expect(prismaMock.studentAssignment.createMany).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('rejectJoinRequests', () => {
+      it('should reject the selected pending requests', async () => {
+        prismaMock.classJoinRequest.updateMany.mockResolvedValue({ count: 2 });
+
+        await expect(
+          service.rejectJoinRequests(admin, 'c1', ['r1', 'r2']),
+        ).resolves.toEqual({ rejected: 2 });
+
+        expect(prismaMock.classJoinRequest.updateMany).toHaveBeenCalledWith({
+          where: {
+            id: { in: ['r1', 'r2'] },
+            classId: 'c1',
+            status: 'PENDING',
+          },
+          data: expect.objectContaining({
+            status: 'REJECTED',
+            decidedById: '1',
+          }),
+        });
+      });
+
+      it('should fail when nothing was pending', async () => {
+        prismaMock.classJoinRequest.updateMany.mockResolvedValue({ count: 0 });
+
+        await expect(
+          service.rejectJoinRequests(admin, 'c1', ['r9']),
+        ).rejects.toBeInstanceOf(NotFoundException);
+      });
+    });
+
+    it('should close a pending request when the teacher adds the student by hand', async () => {
+      prismaMock.class.findUnique.mockResolvedValue({ id: 'c1' });
+      prismaMock.user.findUnique.mockResolvedValue({
+        id: 's1',
+        role: Role.STUDENT,
+      });
+      prismaMock.studentAssignment.findFirst.mockResolvedValue(null);
+      prismaMock.studentAssignment.create.mockResolvedValue({ id: 'a1' });
+
+      await service.addStudent(admin, 'c1', 's1');
+
+      expect(prismaMock.classJoinRequest.updateMany).toHaveBeenCalledWith({
+        where: { classId: 'c1', userId: 's1', status: 'PENDING' },
+        data: expect.objectContaining({
+          status: 'APPROVED',
+          decidedById: '1',
+        }),
+      });
+    });
+
+    it('should include the pending requests count in the class list', async () => {
+      prismaMock.class.findMany.mockResolvedValue([
+        {
+          id: 'c1',
+          name: 'Turma A',
+          joinCode: 'abc123',
+          subject: { name: 'Cálculo', course: { name: 'Engenharia' } },
+          teacherAssignments: [],
+          studentAssignments: [],
+          _count: { joinRequests: 3 },
+        },
+      ]);
+
+      const classes = await service.listClasses(admin);
+
+      expect(classes[0].pendingRequestsCount).toBe(3);
+    });
+  });
 });
