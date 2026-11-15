@@ -19,6 +19,7 @@ export const prismaMock = {
   subject: model(),
   class: model(),
   studentAssignment: model(),
+  classJoinRequest: model(),
   teacherAssignment: model(),
   theme: model(),
   question: model(),

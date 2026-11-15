@@ -10,7 +10,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ClassesService } from './classes.service';
-import { CreateClassDto, AddStudentDto, JoinClassDto } from './dto/classes.dto';
+import {
+  CreateClassDto,
+  AddStudentDto,
+  JoinClassDto,
+  JoinRequestsDecisionDto,
+} from './dto/classes.dto';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt.guard';
 import { RolesGuard } from 'src/common/guards/role.guard';
@@ -63,6 +68,29 @@ export class ClassesController {
   @Patch(':id/join-code')
   resetJoinCode(@Req() req: any, @Param('id') id: string) {
     return this.classesService.resetJoinCode(req, id);
+  }
+
+  @Get(':id/join-requests')
+  listJoinRequests(@Req() req: any, @Param('id') id: string) {
+    return this.classesService.listJoinRequests(req, id);
+  }
+
+  @Post(':id/join-requests/approve')
+  approveJoinRequests(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() dto: JoinRequestsDecisionDto,
+  ) {
+    return this.classesService.approveJoinRequests(req, id, dto.requestIds);
+  }
+
+  @Post(':id/join-requests/reject')
+  rejectJoinRequests(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() dto: JoinRequestsDecisionDto,
+  ) {
+    return this.classesService.rejectJoinRequests(req, id, dto.requestIds);
   }
 
   @Post(':id/students')

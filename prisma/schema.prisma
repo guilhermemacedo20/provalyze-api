@@ -33,6 +33,12 @@ enum GradeStatus {
   TEACHER_APPROVED
 }
 
+enum JoinRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum ExamEventType {
   PASTE
   COPY
@@ -70,6 +76,7 @@ model User {
 
   teacherAssignments TeacherAssignment[]
   studentAssignments StudentAssignment[]
+  classJoinRequests  ClassJoinRequest[]
   pedagogicalReports PedagogicalReport[]
   questionImages     QuestionImage[]
 }
@@ -192,6 +199,7 @@ model Class {
   subject            Subject             @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   teacherAssignments TeacherAssignment[]
   studentAssignments StudentAssignment[]
+  joinRequests       ClassJoinRequest[]
   examAssignments    ExamAssignment[]
 }
 
@@ -222,6 +230,22 @@ model StudentAssignment {
 
   @@index([userId])
   @@index([classId])
+}
+
+model ClassJoinRequest {
+  id          String            @id @default(cuid())
+  classId     String
+  userId      String
+  status      JoinRequestStatus @default(PENDING)
+  createdAt   DateTime          @default(now())
+  decidedAt   DateTime?
+  decidedById String?
+
+  class   Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, userId])
+  @@index([classId, status])
 }
 
 // Exams

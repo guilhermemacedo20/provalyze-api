@@ -1,4 +1,11 @@
-import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import {
+  ArrayMaxSize,
+  ArrayNotEmpty,
+  IsArray,
+  IsNotEmpty,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 import { Trim } from 'src/common/decorators/trim.decorator';
 
 export class CreateClassDto {
@@ -29,4 +36,13 @@ export class JoinClassDto {
   @IsNotEmpty()
   @MaxLength(10)
   code!: string;
+}
+
+export class JoinRequestsDecisionDto {
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(200)
+  @IsString({ each: true })
+  @IsNotEmpty({ each: true })
+  requestIds!: string[];
 }
