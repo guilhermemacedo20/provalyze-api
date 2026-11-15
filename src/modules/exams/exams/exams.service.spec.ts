@@ -512,6 +512,100 @@ describe('ExamsService', () => {
     });
   });
 
+  it('getStudentClassExams esconde prova encerrada que o aluno não fez', async () => {
+    const baseExam = {
+      status: ExamStatus.PUBLISHED,
+      startsAt: new Date('2020-01-01T10:00:00.000Z'),
+      durationMinutes: 60,
+      targetScore: 10,
+    };
+    const past = new Date('2020-01-02T10:00:00.000Z');
+    const future = new Date('2030-06-01T12:00:00.000Z');
+    const session = (status: SessionStatus) => [
+      {
+        id: `session-${status}`,
+        status,
+        score: null,
+        startedAt: null,
+        finishedAt: null,
+      },
+    ];
+
+    prismaMock.class.findFirst.mockResolvedValue({
+      id: 'class-1',
+      name: 'Turma A',
+      subject: { name: 'Mat', course: { name: 'Eng' } },
+      examAssignments: [
+        {
+          exam: {
+            ...baseExam,
+            id: 'aberta',
+            title: 'Aberta sem sessão',
+            endsAt: future,
+            sessions: [],
+          },
+        },
+        {
+          exam: {
+            ...baseExam,
+            id: 'vencida-sem-sessao',
+            title: 'Vencida sem sessão',
+            endsAt: past,
+            sessions: [],
+          },
+        },
+        {
+          exam: {
+            ...baseExam,
+            id: 'encerrada-sem-sessao',
+            title: 'Encerrada sem sessão',
+            status: ExamStatus.ENDED,
+            endsAt: future,
+            sessions: [],
+          },
+        },
+        {
+          exam: {
+            ...baseExam,
+            id: 'vencida-pendente',
+            title: 'Vencida com sessão pendente',
+            endsAt: past,
+            sessions: session(SessionStatus.PENDING),
+          },
+        },
+        {
+          exam: {
+            ...baseExam,
+            id: 'vencida-finalizada',
+            title: 'Vencida que o aluno finalizou',
+            endsAt: past,
+            sessions: session(SessionStatus.FINISHED),
+          },
+        },
+        {
+          exam: {
+            ...baseExam,
+            id: 'vencida-expirada',
+            title: 'Vencida com tempo esgotado',
+            endsAt: past,
+            sessions: session(SessionStatus.EXPIRED),
+          },
+        },
+      ],
+    });
+
+    const result = await service.getStudentClassExams(
+      { user: { id: 'student-1' } },
+      'class-1',
+    );
+
+    expect(result.exams.map((exam) => exam.id)).toEqual([
+      'aberta',
+      'vencida-finalizada',
+      'vencida-expirada',
+    ]);
+  });
+
   it('submitExamEvents registra evento de integridade', async () => {
     prismaMock.class.findFirst.mockResolvedValue({ id: 'class-1' });
     prismaMock.examAssignment.findFirst.mockResolvedValue({
