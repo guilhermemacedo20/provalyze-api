@@ -60,6 +60,11 @@ export class ClassesController {
     return this.classesService.getClass(req, id);
   }
 
+  @Patch(':id/join-code')
+  resetJoinCode(@Req() req: any, @Param('id') id: string) {
+    return this.classesService.resetJoinCode(req, id);
+  }
+
   @Post(':id/students')
   addStudent(
     @Req() req: any,

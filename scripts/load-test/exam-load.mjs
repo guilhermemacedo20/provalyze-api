@@ -7,14 +7,17 @@
  *
  * Uso:
  *   node scripts/load-test/exam-load.mjs --students scripts/load-test/students.json --classId xxx --examId yyy
+ *   node scripts/load-test/exam-load.mjs --mode=stress
  *
  * Variáveis de ambiente (alternativa aos flags):
  *   LOAD_TEST_BASE_URL, LOAD_TEST_CLASS_ID, LOAD_TEST_EXAM_ID, LOAD_TEST_STUDENTS_FILE,
  *   LOAD_TEST_CONCURRENCY, LOAD_TEST_SCENARIO, LOAD_TEST_REPORT,
- *   LOAD_TEST_EVENTS, LOAD_TEST_EVENTS_MIN, LOAD_TEST_EVENTS_MAX
+ *   LOAD_TEST_EVENTS, LOAD_TEST_EVENTS_MIN, LOAD_TEST_EVENTS_MAX,
+ *   LOAD_TEST_MODE, LOAD_TEST_STAGES, LOAD_TEST_MAX_P95_MS, LOAD_TEST_MAX_ERROR_RATE
  */
 
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { cpus, freemem, totalmem } from 'node:os';
 
 const EXAM_EVENT_TYPES = [
   'PASTE',
@@ -24,7 +27,7 @@ const EXAM_EVENT_TYPES = [
   'WINDOW_BLUR',
   'CONTEXT_MENU',
 ];
-import { resolve, dirname } from 'node:path';
+import { resolve, dirname, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -60,6 +63,13 @@ function pickRandom(items) {
   return items[Math.floor(Math.random() * items.length)];
 }
 
+function parseStages(value) {
+  return String(value)
+    .split(',')
+    .map((item) => Number(item.trim()))
+    .filter((item) => Number.isFinite(item) && item > 0);
+}
+
 function parseArgs(argv) {
   const scenario = process.env.LOAD_TEST_SCENARIO ?? 'full';
   const out = {
@@ -75,12 +85,21 @@ function parseArgs(argv) {
       process.env.LOAD_TEST_REPORT ??
       resolve(__dirname, 'last-report.json'),
     thinkMs: Number(process.env.LOAD_TEST_THINK_MS ?? '0'),
+    durationSec: Number(process.env.LOAD_TEST_DURATION_SEC ?? '0'),
     sendEvents: parseBool(
       process.env.LOAD_TEST_EVENTS,
       scenario !== 'login',
     ),
     eventsMin: Number(process.env.LOAD_TEST_EVENTS_MIN ?? '2'),
     eventsMax: Number(process.env.LOAD_TEST_EVENTS_MAX ?? '8'),
+    mode: process.env.LOAD_TEST_MODE ?? 'exam',
+    stages: parseStages(
+      process.env.LOAD_TEST_STAGES ?? '50,100,200,300,500,750,1000',
+    ),
+    maxP95Ms: Number(process.env.LOAD_TEST_MAX_P95_MS ?? '10000'),
+    maxErrorRate: Number(process.env.LOAD_TEST_MAX_ERROR_RATE ?? '5'),
+    cooldownMs: Number(process.env.LOAD_TEST_COOLDOWN_MS ?? '5000'),
+    timeoutMs: Number(process.env.LOAD_TEST_TIMEOUT_MS ?? '30000'),
     dryRun: false,
   };
 
@@ -104,6 +123,8 @@ function parseArgs(argv) {
       out.report = resolve(arg.slice('--report='.length));
     else if (arg.startsWith('--think-ms='))
       out.thinkMs = Number(arg.slice('--think-ms='.length));
+    else if (arg.startsWith('--duration-sec='))
+      out.durationSec = Number(arg.slice('--duration-sec='.length));
     else if (arg === '--no-events') out.sendEvents = false;
     else if (arg.startsWith('--events='))
       out.sendEvents = parseBool(arg.slice('--events='.length), true);
@@ -111,6 +132,22 @@ function parseArgs(argv) {
       out.eventsMin = Number(arg.slice('--events-min='.length));
     else if (arg.startsWith('--events-max='))
       out.eventsMax = Number(arg.slice('--events-max='.length));
+    else if (arg.startsWith('--mode='))
+      out.mode = arg.slice('--mode='.length);
+    else if (arg.startsWith('--stages='))
+      out.stages = parseStages(arg.slice('--stages='.length));
+    else if (arg.startsWith('--max-p95-ms='))
+      out.maxP95Ms = Number(arg.slice('--max-p95-ms='.length));
+    else if (arg.startsWith('--max-error-rate='))
+      out.maxErrorRate = Number(arg.slice('--max-error-rate='.length));
+    else if (arg.startsWith('--cooldown-ms='))
+      out.cooldownMs = Number(arg.slice('--cooldown-ms='.length));
+    else if (arg.startsWith('--timeout-ms='))
+      out.timeoutMs = Number(arg.slice('--timeout-ms='.length));
+  }
+
+  if (!isAbsolute(out.studentsFile)) {
+    out.studentsFile = resolve(process.cwd(), out.studentsFile);
   }
 
   if (out.eventsMin > out.eventsMax) {
@@ -135,9 +172,20 @@ Flags:
   --scenario=full|open|login  full = login+abrir+eventos+entregar (padrão)
   --report=<caminho.json>     salva métricas para evidência
   --think-ms=0                pausa entre abrir e entregar (simula tempo de prova)
+  --duration-sec=0            > 0 = teste sustentado: cada aluno entra uma vez, fica abrindo a
+                              prova e enviando eventos por esse tempo e entrega no final
   --no-events                 não envia POST examEvents
   --events-min=2 --events-max=8   quantidade aleatória por aluno
   --dry-run                   só valida arquivo de alunos e config
+
+Modo limite (stress):
+  --mode=exam|stress          exam = uma rodada com --concurrency alunos (padrão)
+                              stress = rodadas crescentes até o sistema ficar lento
+  --stages=50,100,200,300,500,750,1000   alunos simultâneos em cada rodada
+  --max-p95-ms=3000           para quando o p95 de alguma etapa passar disso
+  --max-error-rate=5          para quando a taxa de erro (%) passar disso
+  --cooldown-ms=5000          pausa entre rodadas
+  --timeout-ms=30000          requisição acima disso conta como erro
 
 Requisitos:
   - API no ar (ex.: npm run start:dev)
@@ -168,6 +216,8 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+let requestTimeoutMs = 30000;
+
 async function requestJson(baseUrl, path, options = {}) {
   const started = performance.now();
   const url = `${baseUrl.replace(/\/$/, '')}${path}`;
@@ -175,6 +225,7 @@ async function requestJson(baseUrl, path, options = {}) {
   try {
     response = await fetch(url, {
       ...options,
+      signal: AbortSignal.timeout(requestTimeoutMs),
       headers: {
         'Content-Type': 'application/json',
         ...options.headers,
@@ -250,7 +301,7 @@ function buildRandomEventPlan(questions, min, max) {
   return plan;
 }
 
-async function sendRandomExamEvents(config, token, examPayload, record) {
+async function sendRandomExamEvents(config, headers, examPayload, record) {
   const questions = examPayload?.questions ?? [];
   if (!config.sendEvents || questions.length === 0) {
     return { planned: 0, ok: 0, failed: 0 };
@@ -272,7 +323,7 @@ async function sendRandomExamEvents(config, token, examPayload, record) {
         `/classes-exams/${config.classId}/exams/${config.examId}/examEvents`,
         {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
+          headers,
           body: JSON.stringify({ event }),
         },
       ),
@@ -284,18 +335,86 @@ async function sendRandomExamEvents(config, token, examPayload, record) {
   return { planned: plan.length, ok, failed };
 }
 
-async function runStudentFlow(config, student, index) {
-  const steps = [];
-  const record = (name, result) => {
+function makeRecorder(steps) {
+  return (name, result) => {
     steps.push({
       name,
       ok: result.ok,
       status: result.status,
       ms: Math.round(result.ms * 100) / 100,
+      at: performance.now(),
       error: result.error,
     });
     return result;
   };
+}
+
+async function runSustainedStudent(config, student, index, endAt) {
+  const steps = [];
+  const record = makeRecorder(steps);
+  const fail = (error) => ({ index, email: student.email, ok: false, steps, error });
+
+  const login = record(
+    'login',
+    await requestJson(config.baseUrl, '/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email: student.email, password: student.password }),
+    }),
+  );
+  if (!login.ok || !login.data?.accessToken) {
+    return fail(login.error ?? 'Login sem accessToken');
+  }
+  const headers = { Authorization: `Bearer ${login.data.accessToken}` };
+  const eventStats = { planned: 0, ok: 0, failed: 0 };
+  let lastExam = null;
+  let iterations = 0;
+
+  while (performance.now() < endAt) {
+    const open = record(
+      'openExam',
+      await requestJson(
+        config.baseUrl,
+        `/classes-exams/${config.classId}/exams/${config.examId}`,
+        { headers },
+      ),
+    );
+    if (!open.ok) return fail(open.error ?? 'Falha ao abrir prova');
+    if (open.data?.available === false) {
+      return fail(open.data?.message ?? 'Prova indisponível');
+    }
+    lastExam = open.data;
+    const stats = await sendRandomExamEvents(config, headers, open.data, record);
+    eventStats.planned += stats.planned;
+    eventStats.ok += stats.ok;
+    eventStats.failed += stats.failed;
+    iterations += 1;
+    if (config.thinkMs > 0) await sleep(config.thinkMs);
+  }
+
+  if (config.scenario !== 'full' || !lastExam) {
+    return { index, email: student.email, ok: true, steps, eventStats, iterations };
+  }
+
+  const submit = record(
+    'submitExam',
+    await requestJson(
+      config.baseUrl,
+      `/classes-exams/${config.classId}/exams/${config.examId}/submit`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ answers: buildAnswers(lastExam) }),
+      },
+    ),
+  );
+  if (!submit.ok) return fail(submit.error ?? 'Falha ao entregar prova');
+
+  return { index, email: student.email, ok: true, steps, eventStats, iterations };
+}
+
+async function runStudentFlow(config, student, index) {
+  const steps = [];
+  const record = makeRecorder(steps);
 
   const login = record(
     'login',
@@ -319,6 +438,7 @@ async function runStudentFlow(config, student, index) {
   }
 
   const token = login.data.accessToken;
+  const authHeaders = { Authorization: `Bearer ${token}` };
 
   if (config.scenario === 'login') {
     return { index, email: student.email, ok: true, steps };
@@ -329,7 +449,7 @@ async function runStudentFlow(config, student, index) {
     await requestJson(
       config.baseUrl,
       `/classes-exams/${config.classId}/exams/${config.examId}`,
-      { headers: { Authorization: `Bearer ${token}` } },
+      { headers: authHeaders },
     ),
   );
 
@@ -355,7 +475,7 @@ async function runStudentFlow(config, student, index) {
 
   const eventStats = await sendRandomExamEvents(
     config,
-    token,
+    authHeaders,
     open.data,
     record,
   );
@@ -394,7 +514,7 @@ async function runStudentFlow(config, student, index) {
       `/classes-exams/${config.classId}/exams/${config.examId}/submit`,
       {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: authHeaders,
         body: JSON.stringify({ answers }),
       },
     ),
@@ -460,6 +580,389 @@ function summarizeStep(stepName, flows) {
   };
 }
 
+function percentile(sorted, pct) {
+  if (!sorted.length) return null;
+  return sorted[Math.min(sorted.length - 1, Math.ceil((pct / 100) * sorted.length) - 1)];
+}
+
+function summarizeEndToEnd(flows) {
+  const totals = flows
+    .filter((f) => f.ok)
+    .map((f) => f.steps.reduce((s, step) => s + step.ms, 0))
+    .sort((a, b) => a - b);
+  if (!totals.length) return summarizeStep('__none__', []);
+  const sum = totals.reduce((a, b) => a + b, 0);
+  return {
+    count: totals.length,
+    avg: Math.round((sum / totals.length) * 100) / 100,
+    p50: Math.round(percentile(totals, 50)),
+    p95: Math.round(percentile(totals, 95)),
+    max: Math.round(totals[totals.length - 1]),
+  };
+}
+
+function summarizeRun(flows, durationMs) {
+  const okFlows = flows.filter((f) => f.ok);
+  const steps = flows.flatMap((f) => f.steps);
+  const httpRequests = steps.length;
+  const httpErrors = steps.filter((s) => !s.ok).length;
+  const durationSec = durationMs / 1000;
+  const rps = durationSec > 0 ? httpRequests / durationSec : 0;
+  const statusCount = {};
+  for (const step of steps) {
+    const key = step.status === 0 ? 'timeout/rede' : String(step.status);
+    statusCount[key] = (statusCount[key] ?? 0) + 1;
+  }
+  const stats = flows.map((f) => f.eventStats).filter(Boolean);
+
+  return {
+    durationSec: Math.round(durationSec * 100) / 100,
+    examEvents: {
+      planned: stats.reduce((n, s) => n + (s.planned ?? 0), 0),
+      ok: stats.reduce((n, s) => n + (s.ok ?? 0), 0),
+      failed: stats.reduce((n, s) => n + (s.failed ?? 0), 0),
+    },
+    throughput: {
+      httpRequests,
+      httpErrors,
+      httpErrorRatePercent:
+        httpRequests > 0 ? Math.round((httpErrors / httpRequests) * 10000) / 100 : 0,
+      requestsPerSecond: Math.round(rps * 100) / 100,
+      requestsPerMinute: Math.round(rps * 60 * 100) / 100,
+      successfulRequestsPerSecond:
+        durationSec > 0
+          ? Math.round(((httpRequests - httpErrors) / durationSec) * 100) / 100
+          : 0,
+      statusCount,
+    },
+    outcomes: {
+      success: okFlows.length,
+      failed: flows.length - okFlows.length,
+      successRatePercent:
+        flows.length > 0 ? Math.round((okFlows.length / flows.length) * 10000) / 100 : 0,
+    },
+    latencyMs: {
+      login: summarizeStep('login', flows),
+      openExam: summarizeStep('openExam', flows),
+      examEvent: summarizeStep('examEvent', flows),
+      submitExam: summarizeStep('submitExam', flows),
+      endToEnd: summarizeEndToEnd(flows),
+    },
+  };
+}
+
+function cpuSnapshot() {
+  return cpus().reduce(
+    (acc, cpu) => {
+      const total = Object.values(cpu.times).reduce((a, b) => a + b, 0);
+      return { idle: acc.idle + cpu.times.idle, total: acc.total + total };
+    },
+    { idle: 0, total: 0 },
+  );
+}
+
+function startMachineMonitor() {
+  const samples = [];
+  let memoryPeak = 0;
+  let last = cpuSnapshot();
+  const timer = setInterval(() => {
+    const current = cpuSnapshot();
+    const total = current.total - last.total;
+    if (total > 0) {
+      samples.push(100 - ((current.idle - last.idle) / total) * 100);
+    }
+    last = current;
+    memoryPeak = Math.max(memoryPeak, (1 - freemem() / totalmem()) * 100);
+  }, 500);
+
+  return () => {
+    clearInterval(timer);
+    const avg = samples.length ? samples.reduce((a, b) => a + b, 0) / samples.length : null;
+    return {
+      cpuAvgPercent: avg === null ? null : Math.round(avg),
+      cpuPeakPercent: samples.length ? Math.round(Math.max(...samples)) : null,
+      memoryPeakPercent: Math.round(memoryPeak),
+      cores: cpus().length,
+    };
+  };
+}
+
+function worstP95(summary) {
+  return Math.max(
+    ...Object.entries(summary.latencyMs)
+      .filter(([name]) => name !== 'endToEnd')
+      .map(([, step]) => step.p95 ?? 0),
+  );
+}
+
+function buildTimeline(flows, t0, bucketSec, totalSec) {
+  const buckets = new Map();
+  for (const step of flows.flatMap((f) => f.steps)) {
+    const key = Math.floor((step.at - t0) / 1000 / bucketSec);
+    const bucket = buckets.get(key) ?? { requests: 0, errors: 0, ms: [] };
+    bucket.requests += 1;
+    if (!step.ok) bucket.errors += 1;
+    bucket.ms.push(step.ms);
+    buckets.set(key, bucket);
+  }
+  return [...buckets.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([key, bucket]) => {
+      const sorted = bucket.ms.sort((a, b) => a - b);
+      const fromSec = key * bucketSec;
+      const toSec = Math.min((key + 1) * bucketSec, Math.max(totalSec, fromSec + 1));
+      return {
+        fromSec,
+        toSec: Math.round(toSec * 10) / 10,
+        requests: bucket.requests,
+        errors: bucket.errors,
+        requestsPerSecond:
+          Math.round((bucket.requests / (toSec - fromSec)) * 100) / 100,
+        p50Ms: Math.round(percentile(sorted, 50)),
+        p95Ms: Math.round(percentile(sorted, 95)),
+      };
+    });
+}
+
+async function runSustainedRound(config, roster) {
+  const stopMonitor = startMachineMonitor();
+  const t0 = performance.now();
+  const endAt = t0 + config.durationSec * 1000;
+  const flows = await Promise.all(
+    roster.map((student, index) =>
+      runSustainedStudent(config, student, index, endAt),
+    ),
+  );
+  const durationMs = performance.now() - t0;
+  return {
+    flows,
+    summary: summarizeRun(flows, durationMs),
+    machine: stopMonitor(),
+    timeline: buildTimeline(flows, t0, 10, durationMs / 1000),
+  };
+}
+
+async function runRound(config, roster, offset) {
+  const stopMonitor = startMachineMonitor();
+  const t0 = performance.now();
+  const flows = await runPool(roster, roster.length, (student, index) =>
+    runStudentFlow(config, student, offset + index),
+  );
+  const durationMs = performance.now() - t0;
+  return {
+    flows,
+    summary: summarizeRun(flows, durationMs),
+    machine: stopMonitor(),
+    timeline: buildTimeline(flows, t0, 1, durationMs / 1000),
+  };
+}
+
+function printFailures(flows) {
+  const failed = flows.filter((f) => !f.ok);
+  if (!failed.length) return;
+  console.log('\nPrimeiras falhas:');
+  for (const f of failed.slice(0, 5)) {
+    console.log(`  - ${f.email}: ${String(f.error).slice(0, 200)}`);
+  }
+}
+
+async function runExamMode(config, students) {
+  const roster = students.slice(0, Math.min(config.concurrency, students.length));
+
+  if (students.length < config.concurrency) {
+    console.warn(
+      `[aviso] concurrency=${config.concurrency}, mas só há ${students.length} alunos no JSON. ` +
+        `Serão executados ${roster.length} fluxos em paralelo.`,
+    );
+  }
+
+  const sustained = config.durationSec > 0;
+  console.log(
+    `Iniciando teste${sustained ? ` sustentado de ${config.durationSec}s` : ''}: ${roster.length} alunos em paralelo | cenário=${config.scenario} | eventos=${config.sendEvents ? `${config.eventsMin}-${config.eventsMax}/abertura` : 'off'} | ${config.baseUrl}`,
+  );
+
+  const startedAt = new Date();
+  const { flows, summary, machine, timeline } = sustained
+    ? await runSustainedRound(config, roster)
+    : await runRound(config, roster, 0);
+  const deliveries = flows.filter((f) =>
+    f.steps.some((step) => step.name === 'submitExam' && step.ok),
+  ).length;
+
+  const report = {
+    meta: {
+      tool: 'exam-load.mjs',
+      mode: sustained ? 'sustained' : 'exam',
+      durationSecRequested: sustained ? config.durationSec : null,
+      thinkMs: config.thinkMs,
+      startedAt: startedAt.toISOString(),
+      finishedAt: new Date().toISOString(),
+      baseUrl: config.baseUrl,
+      classId: config.classId,
+      examId: config.examId,
+      scenario: config.scenario,
+      concurrencyRequested: config.concurrency,
+      studentsExecuted: roster.length,
+      sendEvents: config.sendEvents,
+      eventsPerStudent: config.sendEvents
+        ? { min: config.eventsMin, max: config.eventsMax }
+        : null,
+    },
+    ...summary,
+    deliveries,
+    openExamPerStudent: sustained
+      ? Math.round(
+          (flows.reduce((n, f) => n + (f.iterations ?? 0), 0) / flows.length) * 10,
+        ) / 10
+      : 1,
+    machine,
+    timeline,
+    failures: flows
+      .filter((f) => !f.ok)
+      .slice(0, 20)
+      .map((f) => ({
+        email: f.email,
+        error: f.error,
+        steps: f.steps.filter((step) => !step.ok).slice(0, 5),
+      })),
+  };
+
+  mkdirSync(dirname(config.report), { recursive: true });
+  writeFileSync(config.report, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+
+  console.log('\n--- Resultado ---');
+  console.log(`Sucesso: ${summary.outcomes.success}/${flows.length} | provas entregues: ${deliveries}`);
+  if (sustained) {
+    console.log('\nJanela      req/s   p50     p95     erros');
+    for (const window of timeline) {
+      console.log(
+        `${String(window.fromSec).padStart(4)}-${String(window.toSec).padEnd(5)}s ${String(window.requestsPerSecond).padStart(7)} ${String(window.p50Ms).padStart(5)}ms ${String(window.p95Ms).padStart(5)}ms ${String(window.errors).padStart(6)}`,
+      );
+    }
+    console.log('');
+  }
+  console.log(
+    `Requisições HTTP: ${summary.throughput.httpRequests} (~${summary.throughput.requestsPerSecond} req/s, ~${summary.throughput.requestsPerMinute} req/min)`,
+  );
+  if (summary.examEvents.planned > 0) {
+    console.log(
+      `Eventos de prova: ${summary.examEvents.ok}/${summary.examEvents.planned} ok (${summary.examEvents.failed} falhas)`,
+    );
+  }
+  if (!sustained) {
+    console.log(
+      `Latência fim-a-fim (ok): p50=${summary.latencyMs.endToEnd.p50}ms p95=${summary.latencyMs.endToEnd.p95}ms`,
+    );
+  }
+  console.log(
+    `CPU da máquina: média ${machine.cpuAvgPercent}% | pico ${machine.cpuPeakPercent}% | memória pico ${machine.memoryPeakPercent}%`,
+  );
+  console.log(`Relatório salvo em: ${config.report}`);
+
+  printFailures(flows);
+  if (summary.outcomes.failed > 0) process.exitCode = 1;
+}
+
+async function runStressMode(config, students) {
+  console.log(
+    `Teste de limite: rodadas ${config.stages.join(', ')} | para com p95 > ${config.maxP95Ms}ms ou erro > ${config.maxErrorRate}% | ${config.baseUrl}`,
+  );
+
+  const startedAt = new Date();
+  const stages = [];
+  let offset = 0;
+  let stopReason = 'todas as rodadas concluídas';
+
+  for (const size of config.stages) {
+    if (offset + size > students.length) {
+      stopReason = `alunos insuficientes para a rodada de ${size} (restam ${students.length - offset}). Rode o setup com mais --students.`;
+      break;
+    }
+
+    const roster = students.slice(offset, offset + size);
+    const { flows, summary, machine } = await runRound(config, roster, offset);
+    offset += size;
+
+    const p95 = worstP95(summary);
+    const errorRate = summary.throughput.httpErrorRatePercent;
+    const healthy = p95 <= config.maxP95Ms && errorRate <= config.maxErrorRate;
+    stages.push({
+      concurrentStudents: size,
+      healthy,
+      worstStepP95Ms: Math.round(p95),
+      ...summary,
+      machine,
+      sampleFailures: flows
+        .filter((f) => !f.ok)
+        .slice(0, 5)
+        .map((f) => ({ email: f.email, error: String(f.error).slice(0, 300) })),
+    });
+
+    console.log(
+      `[${healthy ? 'ok' : 'LENTO'}] ${String(size).padStart(5)} alunos | ${summary.throughput.requestsPerSecond} req/s | p95 pior etapa ${Math.round(p95)}ms | erros ${errorRate}% | login p95 ${summary.latencyMs.login.p95 ?? '-'}ms | entrega p95 ${summary.latencyMs.submitExam.p95 ?? '-'}ms | CPU ${machine.cpuAvgPercent}% (pico ${machine.cpuPeakPercent}%)`,
+    );
+
+    if (!healthy) {
+      stopReason =
+        errorRate > config.maxErrorRate
+          ? `taxa de erro ${errorRate}% acima de ${config.maxErrorRate}% com ${size} alunos`
+          : `p95 de ${Math.round(p95)}ms acima de ${config.maxP95Ms}ms com ${size} alunos`;
+      break;
+    }
+
+    if (config.cooldownMs > 0) await sleep(config.cooldownMs);
+  }
+
+  const lastHealthy = [...stages].reverse().find((stage) => stage.healthy) ?? null;
+  const peak = stages.reduce(
+    (best, stage) =>
+      stage.throughput.successfulRequestsPerSecond >
+      (best?.throughput.successfulRequestsPerSecond ?? 0)
+        ? stage
+        : best,
+    null,
+  );
+
+  const report = {
+    meta: {
+      tool: 'exam-load.mjs',
+      mode: 'stress',
+      startedAt: startedAt.toISOString(),
+      finishedAt: new Date().toISOString(),
+      baseUrl: config.baseUrl,
+      classId: config.classId,
+      examId: config.examId,
+      scenario: config.scenario,
+      stagesRequested: config.stages,
+      thresholds: { maxP95Ms: config.maxP95Ms, maxErrorRatePercent: config.maxErrorRate },
+      studentsAvailable: students.length,
+      studentsUsed: offset,
+    },
+    conclusion: {
+      stopReason,
+      maxHealthyConcurrentStudents: lastHealthy?.concurrentStudents ?? 0,
+      requestsPerSecondAtMaxHealthy: lastHealthy?.throughput.requestsPerSecond ?? 0,
+      peakSuccessfulRequestsPerSecond:
+        peak?.throughput.successfulRequestsPerSecond ?? 0,
+      peakAtConcurrentStudents: peak?.concurrentStudents ?? 0,
+    },
+    stages,
+  };
+
+  mkdirSync(dirname(config.report), { recursive: true });
+  writeFileSync(config.report, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+
+  console.log('\n--- Conclusão ---');
+  console.log(`Parada: ${stopReason}`);
+  console.log(
+    `Maior rodada saudável: ${report.conclusion.maxHealthyConcurrentStudents} alunos simultâneos (~${report.conclusion.requestsPerSecondAtMaxHealthy} req/s)`,
+  );
+  console.log(
+    `Pico de vazão (requisições com sucesso): ~${report.conclusion.peakSuccessfulRequestsPerSecond} req/s com ${report.conclusion.peakAtConcurrentStudents} alunos`,
+  );
+  console.log(`Relatório salvo em: ${config.report}`);
+}
+
 function main() {
   const config = parseArgs(process.argv);
   if (config.help) {
@@ -473,9 +976,13 @@ function main() {
     process.exit(1);
   }
 
+  if (!['exam', 'stress'].includes(config.mode)) {
+    console.error('Use --mode=exam ou --mode=stress.');
+    process.exit(1);
+  }
+
+  requestTimeoutMs = config.timeoutMs;
   const students = loadStudents(config.studentsFile);
-  const virtualCount = Math.min(config.concurrency, students.length);
-  const roster = students.slice(0, virtualCount);
 
   if (config.dryRun) {
     console.log(
@@ -483,6 +990,7 @@ function main() {
         {
           ok: true,
           dryRun: true,
+          mode: config.mode,
           baseUrl: config.baseUrl,
           classId: config.classId,
           examId: config.examId,
@@ -491,7 +999,14 @@ function main() {
           eventsMin: config.eventsMin,
           eventsMax: config.eventsMax,
           studentsLoaded: students.length,
-          willRun: roster.length,
+          willRun:
+            config.mode === 'stress'
+              ? config.stages
+              : Math.min(config.concurrency, students.length),
+          studentsNeededForAllStages:
+            config.mode === 'stress'
+              ? config.stages.reduce((a, b) => a + b, 0)
+              : undefined,
         },
         null,
         2,
@@ -500,128 +1015,11 @@ function main() {
     process.exit(0);
   }
 
-  if (students.length < config.concurrency) {
-    console.warn(
-      `[aviso] concurrency=${config.concurrency}, mas só há ${students.length} alunos no JSON. ` +
-        `Serão executados ${roster.length} fluxos em paralelo.`,
-    );
-  }
-
-  console.log(
-    `Iniciando teste: ${roster.length} alunos em paralelo | cenário=${config.scenario} | eventos=${config.sendEvents ? `${config.eventsMin}-${config.eventsMax}/aluno` : 'off'} | ${config.baseUrl}`,
-  );
-
-  const startedAt = new Date();
-  const t0 = performance.now();
-
-  runPool(roster, config.concurrency, (student, index) =>
-    runStudentFlow(config, student, index),
-  )
-    .then((flows) => {
-      const durationMs = performance.now() - t0;
-      const finishedAt = new Date();
-      const okFlows = flows.filter((f) => f.ok);
-      const failFlows = flows.filter((f) => !f.ok);
-
-      const httpRequests = flows.reduce((acc, f) => acc + f.steps.length, 0);
-      const durationSec = durationMs / 1000;
-      const rps = durationSec > 0 ? httpRequests / durationSec : 0;
-      const rpm = rps * 60;
-
-      const report = {
-        meta: {
-          tool: 'exam-load.mjs',
-          startedAt: startedAt.toISOString(),
-          finishedAt: finishedAt.toISOString(),
-          durationMs: Math.round(durationMs),
-          durationSec: Math.round(durationSec * 100) / 100,
-          baseUrl: config.baseUrl,
-          classId: config.classId,
-          examId: config.examId,
-          scenario: config.scenario,
-          concurrencyRequested: config.concurrency,
-          studentsExecuted: roster.length,
-          sendEvents: config.sendEvents,
-          eventsPerStudent: config.sendEvents
-            ? { min: config.eventsMin, max: config.eventsMax }
-            : null,
-        },
-        examEvents: (() => {
-          const stats = flows.map((f) => f.eventStats).filter(Boolean);
-          const planned = stats.reduce((n, s) => n + (s.planned ?? 0), 0);
-          const ok = stats.reduce((n, s) => n + (s.ok ?? 0), 0);
-          const failed = stats.reduce((n, s) => n + (s.failed ?? 0), 0);
-          return { planned, ok, failed };
-        })(),
-        throughput: {
-          httpRequests,
-          requestsPerSecond: Math.round(rps * 100) / 100,
-          requestsPerMinute: Math.round(rpm * 100) / 100,
-        },
-        outcomes: {
-          success: okFlows.length,
-          failed: failFlows.length,
-          successRatePercent:
-            flows.length > 0
-              ? Math.round((okFlows.length / flows.length) * 10000) / 100
-              : 0,
-        },
-        latencyMs: {
-          login: summarizeStep('login', flows),
-          openExam: summarizeStep('openExam', flows),
-          examEvent: summarizeStep('examEvent', flows),
-          submitExam: summarizeStep('submitExam', flows),
-          endToEnd: (() => {
-            const totals = okFlows
-              .map((f) => f.steps.reduce((s, step) => s + step.ms, 0))
-              .sort((a, b) => a - b);
-            if (!totals.length) return summarizeStep('__none__', []);
-            const sum = totals.reduce((a, b) => a + b, 0);
-            const p = (pct) =>
-              totals[Math.min(totals.length - 1, Math.ceil((pct / 100) * totals.length) - 1)];
-            return {
-              count: totals.length,
-              avg: Math.round((sum / totals.length) * 100) / 100,
-              p50: p(50),
-              p95: p(95),
-              max: totals[totals.length - 1],
-            };
-          })(),
-        },
-        failures: failFlows.slice(0, 20).map((f) => ({
-          email: f.email,
-          error: f.error,
-          steps: f.steps,
-        })),
-      };
-
-      writeFileSync(config.report, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
-
-      console.log('\n--- Resultado ---');
-      console.log(`Sucesso: ${report.outcomes.success}/${flows.length}`);
-      console.log(
-        `Requisições HTTP: ${httpRequests} (~${report.throughput.requestsPerSecond} req/s, ~${report.throughput.requestsPerMinute} req/min)`,
-      );
-      if (report.examEvents.planned > 0) {
-        console.log(
-          `Eventos de prova: ${report.examEvents.ok}/${report.examEvents.planned} ok (${report.examEvents.failed} falhas)`,
-        );
-      }
-      console.log(`Latência fim-a-fim (ok): p50=${report.latencyMs.endToEnd.p50}ms p95=${report.latencyMs.endToEnd.p95}ms`);
-      console.log(`Relatório salvo em: ${config.report}`);
-
-      if (failFlows.length > 0) {
-        console.log('\nPrimeiras falhas:');
-        for (const f of failFlows.slice(0, 5)) {
-          console.log(`  - ${f.email}: ${f.error}`);
-        }
-        process.exitCode = 1;
-      }
-    })
-    .catch((error) => {
-      console.error(error);
-      process.exit(1);
-    });
+  const run = config.mode === 'stress' ? runStressMode : runExamMode;
+  run(config, students).catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
 }
 
 main();

@@ -1,0 +1,558 @@
+{
+  "meta": {
+    "tool": "exam-load.mjs",
+    "mode": "stress",
+    "startedAt": "2026-11-13T16:50:52.309Z",
+    "finishedAt": "2026-11-13T16:52:07.565Z",
+    "baseUrl": "https://provalyze-api-production.up.railway.app/api",
+    "classId": "cmwf73m2602bhunwo2ld7pdod",
+    "examId": "cmwf73s5204ofunwovjsv65za",
+    "scenario": "full",
+    "stagesRequested": [
+      50,
+      100,
+      200,
+      300,
+      500,
+      750,
+      1000
+    ],
+    "thresholds": {
+      "maxP95Ms": 10000,
+      "maxErrorRatePercent": 5
+    },
+    "studentsAvailable": 3000,
+    "studentsUsed": 2900
+  },
+  "conclusion": {
+    "stopReason": "p95 de 11342ms acima de 10000ms com 1000 alunos",
+    "maxHealthyConcurrentStudents": 750,
+    "requestsPerSecondAtMaxHealthy": 561.89,
+    "peakSuccessfulRequestsPerSecond": 606.62,
+    "peakAtConcurrentStudents": 1000
+  },
+  "stages": [
+    {
+      "concurrentStudents": 50,
+      "healthy": true,
+      "worstStepP95Ms": 895,
+      "durationSec": 2.2,
+      "examEvents": {
+        "planned": 238,
+        "ok": 238,
+        "failed": 0
+      },
+      "throughput": {
+        "httpRequests": 388,
+        "httpErrors": 0,
+        "httpErrorRatePercent": 0,
+        "requestsPerSecond": 176.08,
+        "requestsPerMinute": 10565.03,
+        "successfulRequestsPerSecond": 176.08,
+        "statusCount": {
+          "200": 50,
+          "201": 338
+        }
+      },
+      "outcomes": {
+        "success": 50,
+        "failed": 0,
+        "successRatePercent": 100
+      },
+      "latencyMs": {
+        "login": {
+          "count": 50,
+          "avg": 650.27,
+          "p50": 639.52,
+          "p95": 895.08,
+          "max": 983.48
+        },
+        "openExam": {
+          "count": 50,
+          "avg": 147.65,
+          "p50": 135.52,
+          "p95": 182.46,
+          "max": 461.92
+        },
+        "examEvent": {
+          "count": 238,
+          "avg": 130.93,
+          "p50": 129.41,
+          "p95": 136.97,
+          "max": 196.76
+        },
+        "submitExam": {
+          "count": 50,
+          "avg": 142.04,
+          "p50": 136.68,
+          "p95": 146.92,
+          "max": 328.64
+        },
+        "endToEnd": {
+          "count": 50,
+          "avg": 1563.17,
+          "p50": 1527,
+          "p95": 2089,
+          "max": 2181
+        }
+      },
+      "machine": {
+        "cpuAvgPercent": 3,
+        "cpuPeakPercent": 4,
+        "memoryPeakPercent": 56,
+        "cores": 32
+      },
+      "sampleFailures": []
+    },
+    {
+      "concurrentStudents": 100,
+      "healthy": true,
+      "worstStepP95Ms": 1346,
+      "durationSec": 2.69,
+      "examEvents": {
+        "planned": 523,
+        "ok": 523,
+        "failed": 0
+      },
+      "throughput": {
+        "httpRequests": 823,
+        "httpErrors": 0,
+        "httpErrorRatePercent": 0,
+        "requestsPerSecond": 306.46,
+        "requestsPerMinute": 18387.58,
+        "successfulRequestsPerSecond": 306.46,
+        "statusCount": {
+          "200": 100,
+          "201": 723
+        }
+      },
+      "outcomes": {
+        "success": 100,
+        "failed": 0,
+        "successRatePercent": 100
+      },
+      "latencyMs": {
+        "login": {
+          "count": 100,
+          "avg": 892.98,
+          "p50": 886.58,
+          "p95": 1345.61,
+          "max": 1404.81
+        },
+        "openExam": {
+          "count": 100,
+          "avg": 139.3,
+          "p50": 135.63,
+          "p95": 159.18,
+          "max": 228.82
+        },
+        "examEvent": {
+          "count": 523,
+          "avg": 133.61,
+          "p50": 130.33,
+          "p95": 150.79,
+          "max": 342.77
+        },
+        "submitExam": {
+          "count": 100,
+          "avg": 140.65,
+          "p50": 137.21,
+          "p95": 154.2,
+          "max": 231.82
+        },
+        "endToEnd": {
+          "count": 100,
+          "avg": 1871.73,
+          "p50": 1829,
+          "p95": 2594,
+          "max": 2671
+        }
+      },
+      "machine": {
+        "cpuAvgPercent": 3,
+        "cpuPeakPercent": 4,
+        "memoryPeakPercent": 55,
+        "cores": 32
+      },
+      "sampleFailures": []
+    },
+    {
+      "concurrentStudents": 200,
+      "healthy": true,
+      "worstStepP95Ms": 2462,
+      "durationSec": 3.87,
+      "examEvents": {
+        "planned": 978,
+        "ok": 978,
+        "failed": 0
+      },
+      "throughput": {
+        "httpRequests": 1578,
+        "httpErrors": 0,
+        "httpErrorRatePercent": 0,
+        "requestsPerSecond": 407.69,
+        "requestsPerMinute": 24461.69,
+        "successfulRequestsPerSecond": 407.69,
+        "statusCount": {
+          "200": 200,
+          "201": 1378
+        }
+      },
+      "outcomes": {
+        "success": 200,
+        "failed": 0,
+        "successRatePercent": 100
+      },
+      "latencyMs": {
+        "login": {
+          "count": 200,
+          "avg": 1514.15,
+          "p50": 1492.28,
+          "p95": 2461.85,
+          "max": 2556.08
+        },
+        "openExam": {
+          "count": 200,
+          "avg": 147.81,
+          "p50": 136.86,
+          "p95": 187.54,
+          "max": 463.02
+        },
+        "examEvent": {
+          "count": 978,
+          "avg": 137.1,
+          "p50": 132.51,
+          "p95": 152.15,
+          "max": 417.45
+        },
+        "submitExam": {
+          "count": 200,
+          "avg": 149.22,
+          "p50": 139.98,
+          "p95": 206.25,
+          "max": 346.37
+        },
+        "endToEnd": {
+          "count": 200,
+          "avg": 2481.59,
+          "p50": 2444,
+          "p95": 3589,
+          "max": 3854
+        }
+      },
+      "machine": {
+        "cpuAvgPercent": 3,
+        "cpuPeakPercent": 5,
+        "memoryPeakPercent": 55,
+        "cores": 32
+      },
+      "sampleFailures": []
+    },
+    {
+      "concurrentStudents": 300,
+      "healthy": true,
+      "worstStepP95Ms": 3571,
+      "durationSec": 5.03,
+      "examEvents": {
+        "planned": 1474,
+        "ok": 1474,
+        "failed": 0
+      },
+      "throughput": {
+        "httpRequests": 2374,
+        "httpErrors": 0,
+        "httpErrorRatePercent": 0,
+        "requestsPerSecond": 471.51,
+        "requestsPerMinute": 28290.33,
+        "successfulRequestsPerSecond": 471.51,
+        "statusCount": {
+          "200": 300,
+          "201": 2074
+        }
+      },
+      "outcomes": {
+        "success": 300,
+        "failed": 0,
+        "successRatePercent": 100
+      },
+      "latencyMs": {
+        "login": {
+          "count": 300,
+          "avg": 2083.34,
+          "p50": 2045.73,
+          "p95": 3570.55,
+          "max": 3740.67
+        },
+        "openExam": {
+          "count": 300,
+          "avg": 163.29,
+          "p50": 140.22,
+          "p95": 270.07,
+          "max": 797.55
+        },
+        "examEvent": {
+          "count": 1474,
+          "avg": 149.04,
+          "p50": 133.76,
+          "p95": 253.84,
+          "max": 826.35
+        },
+        "submitExam": {
+          "count": 300,
+          "avg": 152.65,
+          "p50": 142.51,
+          "p95": 215.72,
+          "max": 322.88
+        },
+        "endToEnd": {
+          "count": 300,
+          "avg": 3131.58,
+          "p50": 3056,
+          "p95": 4639,
+          "max": 5026
+        }
+      },
+      "machine": {
+        "cpuAvgPercent": 5,
+        "cpuPeakPercent": 10,
+        "memoryPeakPercent": 55,
+        "cores": 32
+      },
+      "sampleFailures": []
+    },
+    {
+      "concurrentStudents": 500,
+      "healthy": true,
+      "worstStepP95Ms": 5809,
+      "durationSec": 7.45,
+      "examEvents": {
+        "planned": 2494,
+        "ok": 2494,
+        "failed": 0
+      },
+      "throughput": {
+        "httpRequests": 3994,
+        "httpErrors": 0,
+        "httpErrorRatePercent": 0,
+        "requestsPerSecond": 536.17,
+        "requestsPerMinute": 32170.32,
+        "successfulRequestsPerSecond": 536.17,
+        "statusCount": {
+          "200": 500,
+          "201": 3494
+        }
+      },
+      "outcomes": {
+        "success": 500,
+        "failed": 0,
+        "successRatePercent": 100
+      },
+      "latencyMs": {
+        "login": {
+          "count": 500,
+          "avg": 3265.61,
+          "p50": 3194.43,
+          "p95": 5809.23,
+          "max": 6080.95
+        },
+        "openExam": {
+          "count": 500,
+          "avg": 151.1,
+          "p50": 139.05,
+          "p95": 223.01,
+          "max": 327.19
+        },
+        "examEvent": {
+          "count": 2494,
+          "avg": 144.17,
+          "p50": 133.41,
+          "p95": 208.39,
+          "max": 442.61
+        },
+        "submitExam": {
+          "count": 500,
+          "avg": 154.09,
+          "p50": 143.16,
+          "p95": 211.45,
+          "max": 376.62
+        },
+        "endToEnd": {
+          "count": 500,
+          "avg": 4289.94,
+          "p50": 4340,
+          "p95": 6790,
+          "max": 7410
+        }
+      },
+      "machine": {
+        "cpuAvgPercent": 4,
+        "cpuPeakPercent": 6,
+        "memoryPeakPercent": 55,
+        "cores": 32
+      },
+      "sampleFailures": []
+    },
+    {
+      "concurrentStudents": 750,
+      "healthy": true,
+      "worstStepP95Ms": 8704,
+      "durationSec": 10.64,
+      "examEvents": {
+        "planned": 3731,
+        "ok": 3731,
+        "failed": 0
+      },
+      "throughput": {
+        "httpRequests": 5981,
+        "httpErrors": 0,
+        "httpErrorRatePercent": 0,
+        "requestsPerSecond": 561.89,
+        "requestsPerMinute": 33713.4,
+        "successfulRequestsPerSecond": 561.89,
+        "statusCount": {
+          "200": 750,
+          "201": 5231
+        }
+      },
+      "outcomes": {
+        "success": 750,
+        "failed": 0,
+        "successRatePercent": 100
+      },
+      "latencyMs": {
+        "login": {
+          "count": 750,
+          "avg": 4888.16,
+          "p50": 4903.29,
+          "p95": 8703.62,
+          "max": 9139.38
+        },
+        "openExam": {
+          "count": 750,
+          "avg": 172.38,
+          "p50": 141.98,
+          "p95": 340.5,
+          "max": 542.15
+        },
+        "examEvent": {
+          "count": 3731,
+          "avg": 156.52,
+          "p50": 135.14,
+          "p95": 290.7,
+          "max": 712.75
+        },
+        "submitExam": {
+          "count": 750,
+          "avg": 158.81,
+          "p50": 143.56,
+          "p95": 253.47,
+          "max": 425.92
+        },
+        "endToEnd": {
+          "count": 750,
+          "avg": 5997.98,
+          "p50": 5788,
+          "p95": 9610,
+          "max": 10620
+        }
+      },
+      "machine": {
+        "cpuAvgPercent": 5,
+        "cpuPeakPercent": 9,
+        "memoryPeakPercent": 55,
+        "cores": 32
+      },
+      "sampleFailures": []
+    },
+    {
+      "concurrentStudents": 1000,
+      "healthy": false,
+      "worstStepP95Ms": 11342,
+      "durationSec": 13.3,
+      "examEvents": {
+        "planned": 5078,
+        "ok": 5078,
+        "failed": 0
+      },
+      "throughput": {
+        "httpRequests": 8070,
+        "httpErrors": 4,
+        "httpErrorRatePercent": 0.05,
+        "requestsPerSecond": 606.92,
+        "requestsPerMinute": 36414.98,
+        "successfulRequestsPerSecond": 606.62,
+        "statusCount": {
+          "200": 996,
+          "201": 7070,
+          "timeout/rede": 4
+        }
+      },
+      "outcomes": {
+        "success": 996,
+        "failed": 4,
+        "successRatePercent": 99.6
+      },
+      "latencyMs": {
+        "login": {
+          "count": 996,
+          "avg": 6291.34,
+          "p50": 6276.03,
+          "p95": 11341.74,
+          "max": 12007.81
+        },
+        "openExam": {
+          "count": 996,
+          "avg": 158.68,
+          "p50": 141.47,
+          "p95": 276.56,
+          "max": 439.82
+        },
+        "examEvent": {
+          "count": 5078,
+          "avg": 147.65,
+          "p50": 134.9,
+          "p95": 228.76,
+          "max": 610.86
+        },
+        "submitExam": {
+          "count": 996,
+          "avg": 159.68,
+          "p50": 144.93,
+          "p95": 257.02,
+          "max": 420.21
+        },
+        "endToEnd": {
+          "count": 996,
+          "avg": 7362.48,
+          "p50": 7173,
+          "p95": 12319,
+          "max": 13259
+        }
+      },
+      "machine": {
+        "cpuAvgPercent": 9,
+        "cpuPeakPercent": 16,
+        "memoryPeakPercent": 56,
+        "cores": 32
+      },
+      "sampleFailures": [
+        {
+          "email": "aluno2733@carga.provalyze.local",
+          "error": "fetch failed"
+        },
+        {
+          "email": "aluno2866@carga.provalyze.local",
+          "error": "fetch failed"
+        },
+        {
+          "email": "aluno2882@carga.provalyze.local",
+          "error": "fetch failed"
+        },
+        {
+          "email": "aluno2898@carga.provalyze.local",
+          "error": "fetch failed"
+        }
+      ]
+    }
+  ]
+}
