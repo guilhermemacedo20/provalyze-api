@@ -9,6 +9,8 @@ import {
   RegisterDto,
 } from './dto/auth.dto';
 import { JwtAuthGuard } from 'src/common/guards/jwt.guard';
+import { SkipTerms } from 'src/common/decorators/skip-terms.decorator';
+import { TERMS_VERSION } from 'src/common/constants/terms';
 
 @Controller('auth')
 export class AuthController {
@@ -40,7 +42,13 @@ export class AuthController {
     return this.authService.registerUser(registerUser);
   }
 
+  @Get('terms')
+  terms() {
+    return { version: TERMS_VERSION };
+  }
+
   @Post('accept-terms')
+  @SkipTerms()
   @UseGuards(JwtAuthGuard)
   acceptTerms(
     @Req() req: { user: { id: string } },
@@ -50,12 +58,14 @@ export class AuthController {
   }
 
   @Get('me')
+  @SkipTerms()
   @UseGuards(JwtAuthGuard)
   me(@Req() req: { user: { email: string; id: string } }) {
     return this.authService.me(req.user);
   }
 
   @Get('me/export')
+  @SkipTerms()
   @UseGuards(JwtAuthGuard)
   exportMe(@Req() req: { user: { id: string } }) {
     return this.authService.exportMe(req.user);

@@ -2,6 +2,7 @@ import { PrismaClient, Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import { TERMS_VERSION } from 'src/common/constants/terms';
 
 export const DEFAULT_PASSWORD = 'Senha123';
 
@@ -22,7 +23,13 @@ export async function cleanDatabase(prisma: PrismaClient) {
 //Cria um usuário diretamente no banco.
 export async function createUser(
   prisma: PrismaClient,
-  data: { name: string; email: string; role: Role; password?: string },
+  data: {
+    name: string;
+    email: string;
+    role: Role;
+    password?: string;
+    termsAccepted?: boolean;
+  },
 ) {
   return prisma.user.create({
     data: {
@@ -30,6 +37,9 @@ export async function createUser(
       email: data.email,
       role: data.role,
       password: await bcrypt.hash(data.password ?? DEFAULT_PASSWORD, 10),
+      ...(data.termsAccepted === false
+        ? {}
+        : { termsAcceptedAt: new Date(), termsVersion: TERMS_VERSION }),
     },
   });
 }

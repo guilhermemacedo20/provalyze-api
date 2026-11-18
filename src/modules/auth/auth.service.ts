@@ -92,7 +92,7 @@ export class AuthService {
     const message =
       'Se o e-mail existir, enviaremos um código para redefinir a senha.';
 
-    if (!user) {
+    if (!user || user.anonymizedAt) {
       return { message };
     }
 
@@ -124,7 +124,7 @@ export class AuthService {
 
     const errorMessage = 'Código inválido ou expirado';
 
-    if (!user) {
+    if (!user || user.anonymizedAt) {
       throw new UnauthorizedException(errorMessage);
     }
 
@@ -201,7 +201,7 @@ export class AuthService {
 
     const errorMessage = 'Não foi possível alterar a senha';
 
-    if (!user || !user.password) {
+    if (!user || !user.password || user.anonymizedAt) {
       throw new UnauthorizedException(errorMessage);
     }
 
@@ -298,7 +298,9 @@ export class AuthService {
     });
 
     await this.logs.audit(
-      `Accept terms on first access (v${TERMS_VERSION})`,
+      user.termsAcceptedAt
+        ? `Accept terms update (v${TERMS_VERSION})`
+        : `Accept terms on first access (v${TERMS_VERSION})`,
       user.id,
     );
 
