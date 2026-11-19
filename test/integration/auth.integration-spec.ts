@@ -121,6 +121,7 @@ describe('Auth - integração (API + service + banco)', () => {
       name: 'Ana Souza',
       email: 'ana@escola.edu.br',
       role: 'STUDENT',
+      termsAccepted: false,
     });
 
     // Act
@@ -205,6 +206,7 @@ describe('Auth - integração (API + service + banco)', () => {
       name: 'Ana Souza',
       email: 'ana@escola.edu.br',
       role: 'STUDENT',
+      termsAccepted: false,
     });
 
     // Act
@@ -266,6 +268,7 @@ describe('Auth - integração (API + service + banco)', () => {
       name: 'Carla Dias',
       email: 'carla@escola.edu.br',
       role: 'TEACHER',
+      termsAccepted: false,
     });
 
     // Act
@@ -285,6 +288,7 @@ describe('Auth - integração (API + service + banco)', () => {
       name: 'Carla Dias',
       email: 'carla@escola.edu.br',
       role: 'TEACHER',
+      termsAccepted: false,
     });
     const token = await loginAs(app, 'carla@escola.edu.br');
 
@@ -314,6 +318,7 @@ describe('Auth - integração (API + service + banco)', () => {
       name: 'Carla Dias',
       email: 'carla@escola.edu.br',
       role: 'TEACHER',
+      termsAccepted: false,
     });
     const token = await loginAs(app, 'carla@escola.edu.br');
     const first = await request(app.getHttpServer())
@@ -339,6 +344,7 @@ describe('Auth - integração (API + service + banco)', () => {
       name: 'Carla Dias',
       email: 'carla@escola.edu.br',
       role: 'TEACHER',
+      termsAccepted: false,
     });
     const token = await loginAs(app, 'carla@escola.edu.br');
 
@@ -383,6 +389,7 @@ describe('Auth - integração (API + service + banco)', () => {
         name: 'Carla Dias',
         email: 'carla@escola.edu.br',
         role: 'TEACHER',
+        termsAccepted: false,
       });
       const code = await requestResetCode('carla@escola.edu.br');
 
@@ -413,6 +420,7 @@ describe('Auth - integração (API + service + banco)', () => {
         name: 'Carla Dias',
         email: 'carla@escola.edu.br',
         role: 'TEACHER',
+        termsAccepted: false,
       });
       const code = await requestResetCode('carla@escola.edu.br');
 
@@ -447,6 +455,7 @@ describe('Auth - integração (API + service + banco)', () => {
         name: 'Carla Dias',
         email: 'carla@escola.edu.br',
         role: 'TEACHER',
+        termsAccepted: false,
       });
       const code = await requestResetCode('carla@escola.edu.br');
       await request(app.getHttpServer())
